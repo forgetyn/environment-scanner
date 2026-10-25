@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Python 编译产物
+__pycache__/
+*.py[cod]
+
+# 本地 AI 工具配置与会话文件
+.claude/settings.local.json
+.serena/
+.zcode/plans/
+
+# 本地归档目录：旧版本留档与历史真实报告，仅本地保留，不入库
+bak/
+
+# 扫描产物：包含真实用户数据（文件名/路径/个人统计），任何情况下不入库
+# 覆盖任何位置生成的 data / samples / apps / kb / evidence / judgment / 报告输出
+examples/report/*
+!examples/report/.gitkeep
+environment-scanner-*.json
+environment-scanner-*.html
+
+# 编辑器
+.idea/
+.vscode/
+*.swp

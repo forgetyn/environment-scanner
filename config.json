@@ -1,0 +1,94 @@
+{
+  "version": "4.0.0",
+  "name": "Environment Scanner",
+  "description": "只读扫描用户电脑的近期文件与已安装应用，收集证据，由会话 AI 判断哪些事可以用 AI 提效",
+  "author": "OpenClaw Community",
+
+  "requirements": {
+    "tools": ["read", "exec"],
+    "permissions": ["file_read", "command_exec"]
+  },
+
+  "default_config": {
+    "scan_depth": "deep",
+    "suggestion_strategy": "ai_judgment",
+    "output_dir": "~/.environment-scanner/reports"
+  },
+
+  "features": {
+    "smart_filtering": {
+      "skip_system_files": true,
+      "skip_app_data": true,
+      "skip_cache_logs": true,
+      "skip_dir_names": [
+        ".ssh",
+        ".gnupg",
+        ".aws",
+        ".kube",
+        "Keychains",
+        ".git",
+        "node_modules",
+        "__pycache__"
+      ],
+      "skip_file_names": [".env", "credentials.json", "id_rsa", "id_ed25519"],
+      "skip_file_suffixes": [".pem", ".p12", ".kdbx"],
+      "skip_file_substrings": ["wallet", "crypto", "seed"],
+      "skip_sensitive_dirs": [
+        ".ssh",
+        ".gnupg",
+        ".aws",
+        ".kube",
+        "Keychains"
+      ]
+    },
+
+    "content_sample": {
+      "enabled": true,
+      "discover_home": true,
+      "max_candidates": 120,
+      "max_file_bytes": 2000000,
+      "dir_budget": 8000,
+      "time_budget_sec": 15,
+      "home_depth": 4,
+      "generic_dir_names": ["Documents", "Desktop", "Downloads", "书籍", "notes", "inbox", "untitled", "文稿", "桌面", "下载"],
+      "discover_skip_dir_names": ["Library", "Applications", "Movies", "Music", "Pictures", "Public", ".Trash", "Caches", "Containers", "Group Containers", "node_modules", "venv", ".venv", "dist", "build", "target", "vendor"],
+      "modes": {
+        "quick": {"recent_days": 30, "max_read_files": 0, "max_chars_per_file": 0, "max_total_chars": 0},
+        "standard": {"recent_days": 30, "max_read_files": 40, "max_chars_per_file": 2000, "max_total_chars": 60000},
+        "deep": {"recent_days": 90, "max_read_files": 80, "max_chars_per_file": 4000, "max_total_chars": 120000}
+      }
+    },
+
+    "app_inventory": {
+      "enabled": true,
+      "max_apps": 400,
+      "mac_dirs": ["/Applications", "~/Applications"],
+      "windows_program_dirs": ["C:\\Program Files", "C:\\Program Files (x86)"]
+    },
+
+    "kb_discover": {
+      "enabled": true,
+      "max_depth": 5,
+      "dir_budget": 6000,
+      "time_budget_sec": 20,
+      "max_vaults": 3,
+      "max_deep_reads": 3,
+      "deep_read_lines": 500,
+      "journal_min_files": 10
+    },
+
+    "report": {
+      "required_sections": ["profile", "understanding", "charts", "suggestions", "cadence", "priorities", "assets", "advice", "evidence"],
+      "suggestion_fields": ["activity", "ai_role", "first_step", "expected_saving", "sources", "kind"],
+      "max_suggestions": 10,
+      "max_priorities": 3,
+      "max_activities": 8,
+      "max_assets": 6,
+      "max_advice": 4,
+      "personas": ["novice", "power"],
+      "ai_usage_levels": ["none", "occasional", "deep"],
+      "suggestion_kinds": ["basic", "upgrade"],
+      "zero_signal_confidence": 0.15
+    }
+  }
+}

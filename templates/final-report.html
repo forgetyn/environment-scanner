@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{TITLE}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f1419;
+            --bg-secondary: #1a2332;
+            --bg-card: #1e2a3a;
+            --text-primary: #e8eaed;
+            --text-secondary: #9aa0a6;
+            --text-muted: #5f6368;
+            --accent-primary: #ff6b35;
+            --accent-secondary: #ffc857;
+            --accent-tertiary: #3a86ff;
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --border-color: #2d3a4d;
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'DM Sans', 'PingFang SC', 'Microsoft YaHei', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-image:
+                linear-gradient(rgba(58, 134, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(58, 134, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none; z-index: -1;
+        }
+        .navbar {
+            position: fixed; top: 0; left: 0; right: 0;
+            background: rgba(15, 20, 25, 0.95); backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 14px 0; z-index: 1000; box-shadow: var(--shadow-md);
+        }
+        .navbar-content {
+            max-width: 1200px; margin: 0 auto; padding: 0 20px;
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        }
+        .navbar-brand {
+            font-family: 'JetBrains Mono', monospace; font-size: 1.15rem; font-weight: 700;
+            color: var(--accent-primary); white-space: nowrap;
+        }
+        .navbar-nav { display: flex; gap: 4px; list-style: none; flex-wrap: wrap; }
+        .navbar-nav a {
+            color: var(--text-secondary); text-decoration: none; padding: 6px 12px;
+            border-radius: 8px; transition: all 0.3s ease; font-size: 0.85rem; font-weight: 500;
+        }
+        .navbar-nav a:hover, .navbar-nav a.active { background: var(--accent-primary); color: #fff; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 96px 20px 40px; }
+        .header { text-align: center; margin-bottom: 40px; position: relative; }
+        .header::after {
+            content: ''; position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
+            width: 200px; height: 3px; border-radius: 2px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+        }
+        .header h1 {
+            font-family: 'JetBrains Mono', monospace; font-size: 2.6rem; font-weight: 600;
+            margin-bottom: 12px; letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .header .subtitle { font-size: 1rem; color: var(--text-secondary); }
+        .section {
+            margin-bottom: 44px; padding: 30px;
+            background: var(--bg-card); border-radius: 20px;
+            border: 1px solid var(--border-color); box-shadow: var(--shadow-md);
+        }
+        .section-title {
+            font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; margin-bottom: 24px;
+            padding-left: 16px; border-left: 4px solid var(--accent-primary);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .profile-card {
+            background: var(--bg-card); border-radius: 20px; padding: 32px; margin-bottom: 44px;
+            box-shadow: var(--shadow-md); border: 1px solid var(--border-color);
+            position: relative; overflow: hidden;
+        }
+        .profile-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary), var(--accent-tertiary));
+        }
+        .profile-header { display: flex; align-items: center; gap: 24px; margin-bottom: 20px; }
+        .avatar {
+            width: 84px; height: 84px; border-radius: 50%; flex-shrink: 0;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-tertiary));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2.2rem; box-shadow: var(--shadow-md);
+        }
+        .profile-info h2 { font-size: 1.5rem; margin-bottom: 6px; }
+        .profile-info .meta { color: var(--text-muted); font-size: 0.85rem; }
+        .profile-body p { color: var(--text-secondary); margin: 10px 0; }
+        .role { color: var(--accent-primary); font-size: 1.05rem; font-weight: 500; margin: 6px 0; }
+        .callout {
+            background: rgba(255, 107, 53, 0.08); border-left: 4px solid var(--accent-secondary);
+            border-radius: 0 10px 10px 0; padding: 12px 16px; margin: 12px 0;
+            color: var(--text-primary);
+        }
+        .profile-stats {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px; margin-top: 22px;
+        }
+        .stat-item {
+            background: var(--bg-secondary); padding: 14px; border-radius: 12px;
+            border: 1px solid var(--border-color); text-align: center;
+        }
+        .stat-label {
+            font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 0.05em; margin-bottom: 6px; font-weight: 600;
+        }
+        .stat-value {
+            font-size: 1.5rem; font-weight: 700; color: var(--accent-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        table.diag { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 14px; }
+        table.diag th, table.diag td {
+            text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border-color); vertical-align: top;
+        }
+        table.diag th { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+        .badge {
+            display: inline-block; font-size: 0.75rem; border-radius: 999px; padding: 2px 10px;
+            background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-secondary);
+        }
+        .badge-win { background: rgba(16, 185, 129, 0.15); color: var(--accent-success); border-color: rgba(16, 185, 129, 0.4); font-weight: 600; }
+        .badge-upgrade { background: rgba(58, 134, 255, 0.15); color: var(--accent-tertiary); border-color: rgba(58, 134, 255, 0.4); font-weight: 600; }
+        .badge-none { background: rgba(239, 68, 68, 0.12); color: #ef4444; border-color: rgba(239, 68, 68, 0.4); font-weight: 600; }
+        .badge-occasional { background: rgba(245, 158, 11, 0.12); color: var(--accent-warning); border-color: rgba(245, 158, 11, 0.4); font-weight: 600; }
+        .badge-deep { background: rgba(16, 185, 129, 0.15); color: var(--accent-success); border-color: rgba(16, 185, 129, 0.4); font-weight: 600; }
+        .charts-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 20px; margin-top: 10px;
+        }
+        .chart-container {
+            background: var(--bg-secondary); padding: 20px; border-radius: 16px;
+            border: 1px solid var(--border-color);
+        }
+        .chart-title { font-size: 1rem; margin-bottom: 14px; font-weight: 600; }
+        .chart-note { color: var(--text-muted); font-size: 0.8rem; margin-top: 10px; }
+        .suggestion-card {
+            background: var(--bg-secondary); padding: 24px; border-radius: 16px;
+            border-left: 4px solid var(--accent-primary); margin-bottom: 18px;
+        }
+        .suggestion-card h3 { color: var(--accent-primary); font-size: 1.15rem; margin-bottom: 12px; }
+        .suggestion-card p { color: var(--text-secondary); margin-bottom: 10px; font-size: 0.92rem; }
+        .suggestion-card ul { color: var(--text-secondary); line-height: 1.8; margin: 8px 0 8px 22px; font-size: 0.92rem; }
+        .suggestion-card .badges { display: flex; gap: 8px; margin-bottom: 10px; }
+        .muted { color: var(--text-muted); font-size: 0.82rem; }
+        .timeline-detailed {
+            background: var(--bg-secondary); padding: 24px; border-radius: 16px; margin-bottom: 18px;
+        }
+        .timeline-detailed h3 { font-size: 1.1rem; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--border-color); }
+        .timeline-item {
+            padding: 12px 14px; background: var(--bg-card); border-radius: 10px; margin-bottom: 10px;
+            color: var(--text-secondary); font-size: 0.92rem;
+        }
+        .priority-card {
+            background: linear-gradient(135deg, rgba(255, 107, 53, 0.12), rgba(255, 200, 87, 0.10));
+            padding: 26px; border-radius: 16px; margin-bottom: 18px; border: 2px solid var(--accent-primary);
+        }
+        .priority-card h3 { color: var(--accent-primary); font-size: 1.25rem; margin-bottom: 14px; }
+        .priority-section { background: rgba(255, 255, 255, 0.04); padding: 16px; border-radius: 12px; margin-top: 12px; }
+        .priority-section h4 { color: var(--accent-secondary); margin-bottom: 10px; font-size: 1rem; }
+        .priority-section p, .priority-section li { color: var(--text-secondary); font-size: 0.92rem; line-height: 1.7; }
+        .priority-section ul { margin-left: 20px; }
+        .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+        .chip {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: 999px; padding: 3px 12px; font-size: 0.82rem; color: var(--text-secondary);
+        }
+        table.files { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        table.files th, table.files td {
+            text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border-color); word-break: break-all;
+        }
+        table.files th { color: var(--text-muted); font-weight: 600; }
+        details.raw { margin-top: 14px; }
+        details.raw summary { cursor: pointer; color: var(--text-muted); font-size: 0.82rem; }
+        details.raw pre {
+            background: #0b0f14; color: #cfe3d8; border-radius: 10px; padding: 14px;
+            overflow-x: auto; font-size: 0.72rem; max-height: 420px;
+        }
+        .footer {
+            text-align: center; margin-top: 44px; padding-top: 28px;
+            border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.85rem;
+        }
+        .footer strong { color: var(--accent-primary); }
+        @media (max-width: 768px) {
+            .navbar-content { flex-direction: column; gap: 10px; }
+            .header h1 { font-size: 1.9rem; }
+            .profile-header { flex-direction: column; text-align: center; }
+            .charts-grid { grid-template-columns: 1fr; }
+        }
+        @media print {
+            .navbar { display: none; }
+            .container { padding-top: 10px; }
+            .section, .profile-card { break-inside: avoid; box-shadow: none; }
+            details.raw { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-brand">🦞 Environment Scanner v{{VERSION}}</div>
+            <ul class="navbar-nav">
+                <li><a href="#profile" class="active">用户画像</a></li>
+                <li><a href="#understanding">整体理解</a></li>
+                <li><a href="#charts">数据可视化</a></li>
+                <li><a href="#suggestions">建议</a></li>
+                <li><a href="#cadence">协作方式</a></li>
+                <li><a href="#priorities">优先建议</a></li>
+                <li><a href="#assets">高价值发现</a></li>
+                <li><a href="#evidence">证据</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>{{TITLE}}</h1>
+            <p class="subtitle">深度扫描 · 全面理解 · 精准建议 | 扫描时间: {{SCAN_TIME}}</p>
+        </div>
+
+        <div id="profile" class="profile-card">
+            <div class="profile-header">
+                <div class="avatar">🦞</div>
+                <div class="profile-info">
+                    <h2>你的环境画像</h2>
+                    <div class="meta">{{PLATFORM}} · 模式 {{SCAN_MODE}} · 报告生成 {{GENERATED_AT}}</div>
+                </div>
+            </div>
+            <div class="profile-body">{{PROFILE_BODY}}</div>
+            <div class="profile-stats">{{KPI_HTML}}</div>
+        </div>
+
+        <div id="understanding" class="section">
+            <h2 class="section-title"><span>👤</span> 对你的整体理解</h2>
+            <div style="display: grid; gap: 18px;">{{UNDERSTANDING_HTML}}</div>
+        </div>
+
+        <div id="charts" class="section">
+            <h2 class="section-title"><span>📊</span> 数据可视化分析</h2>
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3 class="chart-title">📁 文件类型分布</h3>
+                    <canvas id="fileDistChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3 class="chart-title">🎯 活跃领域（近 90 天目录热度）</h3>
+                    <canvas id="focusRadarChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3 class="chart-title">📈 近期文件活跃趋势（按周）</h3>
+                    <canvas id="activityTrendChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3 class="chart-title">⏰ 时间分配（活跃目录占比）</h3>
+                    <canvas id="timeAllocationChart"></canvas>
+                </div>
+            </div>
+            <p class="chart-note">图表数字全部来自本次扫描的真实聚合数据，由本地渲染器直接注入，不经 AI 手填。</p>
+        </div>
+
+        <div id="suggestions" class="section">
+            <h2 class="section-title"><span>💡</span> 可以让 AI 接手的事</h2>
+            {{SUGGESTIONS_HTML}}
+        </div>
+
+        <div id="cadence" class="section">
+            <h2 class="section-title"><span>🤝</span> 长期协作方式</h2>
+            {{CADENCE_HTML}}
+        </div>
+
+        <div id="priorities" class="section">
+            <h2 class="section-title"><span>🎯</span> 最值得优先尝试的帮助</h2>
+            {{PRIORITIES_HTML}}
+        </div>
+
+        <div id="assets" class="section">
+            <h2 class="section-title"><span>💎</span> 发现的潜在重要信息</h2>
+            {{ASSETS_HTML}}
+        </div>
+
+        <div id="advice" class="section">
+            <h2 class="section-title"><span>🔧</span> 文件结构改进建议</h2>
+            {{ADVICE_HTML}}
+        </div>
+
+        <div id="evidence" class="section">
+            <h2 class="section-title"><span>🗂️</span> 这次读到了什么</h2>
+            {{KB_HTML}}
+            {{DEEP_READS_HTML}}
+            {{EVIDENCE_HTML}}
+            <h3 style="font-size:0.95rem; margin-top: 18px;">装了哪些软件</h3>
+            {{APPS_HTML}}
+            <details class="raw">
+                <summary>展开原始扫描数据（JSON）</summary>
+                <pre>{{RAW_JSON}}</pre>
+            </details>
+        </div>
+
+        <div class="footer">
+            <p>Environment Scanner Report v{{VERSION}} | 扫描时间: <strong>{{SCAN_TIME}}</strong> | 模式: {{SCAN_MODE}}</p>
+            <p style="margin-top: 10px;">只读扫描，未修改任何文件 · 全程不出站，图表数据来自本地聚合</p>
+        </div>
+    </div>
+
+    <script>
+        const CHART_DATA = {{CHART_DATA_JSON}};
+
+        document.querySelectorAll('.navbar-nav a').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.getElementById(this.getAttribute('href').substring(1));
+                if (target) window.scrollTo({ top: target.offsetTop - 80, behavior: 'smooth' });
+                document.querySelectorAll('.navbar-nav a').forEach(a => a.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        window.addEventListener('scroll', function () {
+            const sections = document.querySelectorAll('section, .profile-card');
+            const navLinks = document.querySelectorAll('.navbar-nav a');
+            let current = '';
+            sections.forEach(section => {
+                if (pageYOffset >= section.offsetTop - 100) current = section.getAttribute('id');
+            });
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) link.classList.add('active');
+            });
+        });
+
+        if (typeof Chart === 'undefined') {
+            document.querySelectorAll('.chart-container').forEach(box => {
+                box.insertAdjacentHTML('beforeend',
+                    '<p class="chart-note">（离线模式：图表库未加载，数据见下方原始扫描 JSON。）</p>');
+            });
+        } else {
+            const textColor = '#9aa0a6';
+            const gridColor = 'rgba(58, 134, 255, 0.1)';
+            const palette = ['#ff6b35', '#ffc857', '#3a86ff', '#10b981', '#f59e0b', '#ef4444'];
+
+            new Chart(document.getElementById('fileDistChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: CHART_DATA.fileDist.labels,
+                    datasets: [{ data: CHART_DATA.fileDist.data, backgroundColor: palette, borderWidth: 0 }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: textColor } } } }
+            });
+
+            new Chart(document.getElementById('focusRadarChart'), {
+                type: 'radar',
+                data: {
+                    labels: CHART_DATA.focusRadar.labels,
+                    datasets: [{
+                        label: '相对热度',
+                        data: CHART_DATA.focusRadar.data,
+                        backgroundColor: 'rgba(255, 107, 53, 0.2)',
+                        borderColor: '#ff6b35', borderWidth: 2, pointBackgroundColor: '#ff6b35'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { r: { beginAtZero: true, max: 100, ticks: { color: textColor, backdropColor: 'transparent' }, grid: { color: gridColor }, pointLabels: { color: '#e8eaed', font: { size: 11 } } } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            new Chart(document.getElementById('activityTrendChart'), {
+                type: 'line',
+                data: {
+                    labels: CHART_DATA.activityTrend.labels,
+                    datasets: [{
+                        label: '近期文件数',
+                        data: CHART_DATA.activityTrend.data,
+                        borderColor: '#ff6b35', backgroundColor: 'rgba(255, 107, 53, 0.1)',
+                        borderWidth: 3, tension: 0.35, fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { color: textColor }, grid: { color: gridColor } },
+                        x: { ticks: { color: textColor, maxTicksLimit: 10 }, grid: { color: gridColor } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            new Chart(document.getElementById('timeAllocationChart'), {
+                type: 'polarArea',
+                data: {
+                    labels: CHART_DATA.timeAllocation.labels,
+                    datasets: [{ data: CHART_DATA.timeAllocation.data, backgroundColor: palette.map(c => c + 'cc'), borderWidth: 0 }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: textColor } } } }
+            });
+        }
+    </script>
+</body>
+</html>
