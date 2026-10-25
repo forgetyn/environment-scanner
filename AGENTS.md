@@ -23,6 +23,7 @@
 ## 目录结构与核心文件入口
 
 - `SKILL.md`：触发描述、两步工作流、判断准则（rubric）、安全边界、校验规则
+- `README.md`：面向 GitHub 用户的中文项目介绍（安装 / 使用 / 隐私 / 限制 / 开发）
 - `scripts/run-scan.sh`：唯一扫描入口（计数 → 采样 → 应用清单 → 证据合并 + 证据报告）
 - `scripts/collect-data.sh` / `scripts/collect-data.ps1`：计数包装（bash / PowerShell）
 - `scripts/generate-final-report.sh`：校验 AI 判断并渲染最终报告
