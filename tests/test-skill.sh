@@ -4,7 +4,7 @@
 
 set -u
 
-SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAIL=0
 
 echo "🦞 Environment Scanner Skill - 快速测试"
@@ -36,7 +36,7 @@ check_file "scripts/lib/evidence_pack.py"
 check_file "scripts/lib/judgment.py"
 check_file "scripts/lib/common.py"
 check_file "templates/final-report.html"
-check_file "test-skill-behavior.sh"
+check_file "tests/test-skill-behavior.sh"
 
 echo ""
 echo "2. 配置合法性"

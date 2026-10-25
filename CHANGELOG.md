@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 变更
+- 测试脚本从根目录移至 `tests/`（`tests/test-skill.sh` / `tests/test-skill-behavior.sh` / `tests/test-skill-full.sh`），并修正脚本内 `SKILL_DIR` 定位（指向仓库根）与脚本间互相引用路径。测试脚本仅用于开发迭代，技能运行时不依赖，行为不变。移动后回归验证：快速 / 行为 21 项 / 全量 29 项，0 失败 0 警告。
+- 重构 `AGENTS.md` 为纯全局指南（项目定位 / 当前快照 / 目录结构与核心文件入口 / 归档说明 / 已知限制与待处理 / 快速检查 / 迭代约束 / 留痕规则 / 经验沉淀）；原文件内的变更记录与修复历史全部并入 `CHANGELOG.md`（各版本节已完整覆盖同等内容，无信息丢失），此后变更记录只在 `CHANGELOG.md` 维护。
+
 ### 仓库管理
 - 开源发布准备：新增 `.gitignore` 并初始化 git 仓库。不入库内容：本地归档 `bak/`（旧版本留档 + 历史真实报告）、真实扫描产物（`examples/report/` 内容与任意位置生成的 `environment-scanner-*.json|html`，含个人数据）、macOS/Python/编辑器文件（`.DS_Store`、`__pycache__/`、`.idea/` 等）、本地 AI 工具文件（`.claude/settings.local.json`、`.serena/`、`.zcode/plans/`）。`examples/report/` 以 `.gitkeep` 占位保持空目录。
 

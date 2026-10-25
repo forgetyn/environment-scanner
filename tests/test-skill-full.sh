@@ -4,7 +4,7 @@
 
 set -u
 
-SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_FILE="$SKILL_DIR/config.json"
 
 GREEN='\033[0;32m'
@@ -55,8 +55,8 @@ files=(
     "scripts/lib/evidence_pack.py"
     "scripts/lib/judgment.py"
     "templates/final-report.html"
-    "test-skill.sh"
-    "test-skill-behavior.sh"
+    "tests/test-skill.sh"
+    "tests/test-skill-behavior.sh"
 )
 
 for file in "${files[@]}"; do
@@ -363,7 +363,7 @@ rm -rf "$TMP_ROOT"
 echo ""
 echo "5️⃣  行为回归"
 echo "-----------------------------------"
-if bash "$SKILL_DIR/test-skill-behavior.sh"; then
+if bash "$SKILL_DIR/tests/test-skill-behavior.sh"; then
     test_pass "行为测试脚本通过"
 else
     test_fail "行为测试脚本失败"

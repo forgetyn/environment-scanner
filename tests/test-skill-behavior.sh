@@ -5,7 +5,7 @@
 
 set -u
 
-SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PASS=0
 FAIL=0
 TMP_ROOT="$(mktemp -d /tmp/environment-scanner-behavior-XXXXXX)"
