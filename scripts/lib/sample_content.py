@@ -13,31 +13,34 @@ from html import unescape
 from pathlib import Path
 
 from common import is_noise, secret_reason
+from kb_discover import DEFAULT_CONFIG as KB_DEFAULT
+from kb_discover import find_vaults, journal_specs
+from platforms import get_platform
 from scan_collect import RootUnreadable, load_skip_rules, skip_dir, skip_file, walk
 
 
-DOCUMENT_EXTENSIONS = {".md", ".markdown", ".txt", ".csv", ".docx", ".pptx", ".pdf", ".xlsx"}
-BODY_SKIPPED = {".pdf": "pdf", ".xlsx": "xlsx"}
-MAX_TEXT_LINES = 200
-DEFAULT_DISCOVER_SKIP = {
-    "Library",
-    "Applications",
-    "Movies",
-    "Music",
-    "Pictures",
-    "Public",
-    ".Trash",
-    "Caches",
-    "Containers",
-    "Group Containers",
-    "node_modules",
-    "venv",
-    ".venv",
-    "dist",
-    "build",
-    "target",
-    "vendor",
+DOCUMENT_EXTENSIONS = {
+    ".md", ".markdown", ".txt", ".csv", ".docx", ".pptx", ".pdf", ".xlsx",
+    ".doc", ".rtf", ".pages", ".key", ".numbers",
 }
+BODY_SKIPPED = {
+    ".pdf": "pdf",
+    ".xlsx": "xlsx",
+    ".doc": "doc",
+    ".rtf": "rtf",
+    ".pages": "pages",
+    ".key": "keynote",
+    ".numbers": "numbers",
+}
+READABLE_EXTENSIONS = DOCUMENT_EXTENSIONS - set(BODY_SKIPPED)
+DEFAULT_SELECTION = {
+    "per_parent_cap": 8,
+    "journal_cap": 8,
+    "journal_per_parent": 3,
+    "download_cap": 12,
+    "book_cap": 4,
+}
+MAX_TEXT_LINES = 200
 DEFAULT_MODES = {
     "quick": {"recent_days": 30, "max_read_files": 0, "max_chars_per_file": 0, "max_total_chars": 0},
     "standard": {"recent_days": 30, "max_read_files": 40, "max_chars_per_file": 2000, "max_total_chars": 60000},
@@ -56,8 +59,9 @@ def load_sample_config():
         "dir_budget": 8000,
         "time_budget_sec": 15,
         "home_depth": 4,
-        "discover_skip_dir_names": set(DEFAULT_DISCOVER_SKIP),
+        "discover_skip_dir_names": set(),
         "modes": DEFAULT_MODES,
+        "selection": dict(DEFAULT_SELECTION),
     }
     path = config_path()
     if not path.is_file():
@@ -79,6 +83,10 @@ def load_sample_config():
         sample["home_depth"] = int(raw["home_depth"])
     if raw.get("discover_skip_dir_names"):
         sample["discover_skip_dir_names"] = set(raw["discover_skip_dir_names"])
+    raw_selection = raw.get("selection") or {}
+    for key, default in DEFAULT_SELECTION.items():
+        if key in raw_selection:
+            sample["selection"][key] = int(raw_selection[key])
     modes = raw.get("modes") or {}
     for name, defaults in DEFAULT_MODES.items():
         override = modes.get(name) or {}
@@ -150,6 +158,8 @@ def discover_files(home, rules, warnings, roots, cutoff, limits, sample_config):
     time_budget = env_int("ENV_SCANNER_SAMPLE_TIME_BUDGET_SEC", sample_config["time_budget_sec"])
     max_depth = sample_config["home_depth"]
     extra_skip = {name.lower() for name in sample_config["discover_skip_dir_names"]}
+    extra_skip |= {name.lower() for name in get_platform().home_discover_skip_dirs()}
+    extra_skip |= {"node_modules", "venv", ".venv", "dist", "build", "target", "vendor"}
     started = time.monotonic()
     state = {"visited": 0, "stopped": False}
 
@@ -326,6 +336,142 @@ def build_record(item, char_limit, total_state):
     return record, None
 
 
+def candidate_pool(path, downloads, books, journal_dirs):
+    """书籍根、下载根优先。日记只认知识库配置目录里的笔记，不看文件名。"""
+    if is_under(path, books):
+        return "book"
+    if is_under(path, downloads):
+        return "download"
+    if path.suffix.lower() in {".md", ".markdown"}:
+        for journal_root in journal_dirs:
+            if is_under(path, journal_root):
+                return "journal"
+    return "work"
+
+
+def collect_journal_dirs(roots, rules, warnings):
+    """roots 是 (路径, 搜索深度)。同一个日记目录只记一次。"""
+    found = []
+    seen = set()
+    for root, depth in roots:
+        for vault in find_vaults(root, rules, depth):
+            specs, spec_warnings = journal_specs(vault)
+            warnings.extend(spec_warnings)
+            for spec in specs:
+                key = str(spec["path"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append(spec["path"])
+    return found
+
+
+def preference_key(item):
+    readable = item["path"].suffix.lower() in READABLE_EXTENSIONS and not item["too_large"]
+    return (0 if readable else 1, -item["mtime"])
+
+
+def take_round_robin(pool, limit, per_parent=None):
+    """按父目录轮转取出文件。同一目录里先取可读正文，再按修改时间。"""
+    if limit <= 0 or not pool:
+        return []
+    groups = {}
+    for item in pool:
+        groups.setdefault(str(item["path"].resolve().parent), []).append(item)
+    for items in groups.values():
+        items.sort(key=preference_key)
+    parents = sorted(
+        groups,
+        key=lambda key: max(item["mtime"] for item in groups[key]),
+        reverse=True,
+    )
+    picked = []
+    counts = {key: 0 for key in parents}
+    while len(picked) < limit:
+        progressed = False
+        for key in parents:
+            if len(picked) >= limit:
+                break
+            if per_parent is not None and counts[key] >= per_parent:
+                continue
+            if not groups[key]:
+                continue
+            picked.append(groups[key].pop(0))
+            counts[key] += 1
+            progressed = True
+        if not progressed:
+            break
+    picked_ids = {id(item) for item in picked}
+    pool[:] = [item for item in pool if id(item) not in picked_ids]
+    return picked
+
+
+def take_sorted(pool, limit, prefer_readable):
+    if limit <= 0 or not pool:
+        return []
+    if prefer_readable:
+        ordered = sorted(pool, key=preference_key)
+    else:
+        ordered = sorted(pool, key=lambda item: -item["mtime"])
+    return ordered[:limit]
+
+
+def select_candidates(explicit, candidates, selection, max_candidates):
+    """显式路径先保留。其余名额按工作、日记、下载、书籍分配。
+
+    工作文件先按目录轮转，避免一个目录占满 120。只有工作池可以在名额
+    还有剩余时继续回填，日记、下载、书籍到上限就停。
+    """
+    selected = []
+    seen = set()
+    for item in explicit:
+        key = str(item["path"].resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(item)
+
+    work, journal, download, book = [], [], [], []
+    for item in candidates:
+        key = str(item["path"].resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        pool = item.get("pool") or "work"
+        if pool == "journal":
+            journal.append(item)
+        elif pool == "download":
+            download.append(item)
+        elif pool == "book":
+            book.append(item)
+        else:
+            work.append(item)
+
+    reserve = 0
+    if journal:
+        reserve += selection["journal_cap"]
+    if download:
+        reserve += selection["download_cap"]
+    if book:
+        reserve += selection["book_cap"]
+    work_room = max(0, max_candidates - reserve)
+    picked_work = take_round_robin(work, work_room, selection["per_parent_cap"])
+    picked_journal = take_round_robin(
+        journal, selection["journal_cap"], selection["journal_per_parent"]
+    )
+    picked_download = take_sorted(download, selection["download_cap"], prefer_readable=True)
+    picked_book = take_sorted(book, selection["book_cap"], prefer_readable=False)
+    selected.extend(picked_work)
+    selected.extend(picked_journal)
+    selected.extend(picked_download)
+    selected.extend(picked_book)
+    used = len(picked_work) + len(picked_journal) + len(picked_download) + len(picked_book)
+    leftover = max_candidates - used
+    if leftover > 0:
+        selected.extend(take_round_robin(work, leftover, None))
+    return selected
+
+
 def collect_samples(documents, desktop, downloads, books, mode, explicit_paths):
     rules = load_skip_rules()
     sample_config = load_sample_config()
@@ -350,11 +496,16 @@ def collect_samples(documents, desktop, downloads, books, mode, explicit_paths):
                 candidates.append(item)
 
     discover = os.environ.get("ENV_SCANNER_DISCOVER_HOME", "1") != "0"
+    search_roots = [(root, KB_DEFAULT["max_depth"]) for root in roots if root.exists()]
     if discover:
         home = Path(os.environ.get("ENV_SCANNER_HOME", str(Path.home())))
         candidates.extend(
             discover_files(home, rules, warnings, roots, cutoff, limits, sample_config)
         )
+        search_roots.append((home, sample_config["home_depth"]))
+    journal_dirs = collect_journal_dirs(search_roots, rules, warnings)
+    for item in candidates:
+        item["pool"] = candidate_pool(item["path"], downloads, books, journal_dirs)
 
     seen = set()
     explicit_items = []
@@ -372,17 +523,12 @@ def collect_samples(documents, desktop, downloads, books, mode, explicit_paths):
         item["key"] = key
         explicit_items.append(item)
 
-    unique = []
-    ordered = explicit_items + sorted(candidates, key=lambda row: row["mtime"], reverse=True)
-    for item in ordered:
-        key = item.get("key") or str(item["path"].resolve())
-        if key in seen and not item["explicit"]:
-            continue
-        if not item["explicit"]:
-            seen.add(key)
-        unique.append(item)
-        if len(unique) >= sample_config["max_candidates"]:
-            break
+    unique = select_candidates(
+        explicit_items,
+        candidates,
+        sample_config["selection"],
+        sample_config["max_candidates"],
+    )
 
     read_budget = limits["max_read_files"]
     total_state = {"remaining": limits["max_total_chars"]}
@@ -427,10 +573,11 @@ def main():
     args = parser.parse_args()
     mode = args.mode if args.mode in {"quick", "standard", "deep"} else "deep"
     home = Path.home()
-    documents = Path(os.environ.get("ENV_SCANNER_DOCUMENTS", home / "Documents"))
-    desktop = Path(os.environ.get("ENV_SCANNER_DESKTOP", home / "Desktop"))
-    downloads = Path(os.environ.get("ENV_SCANNER_DOWNLOADS", home / "Downloads"))
-    books = Path(os.environ.get("ENV_SCANNER_BOOKS", desktop / "书籍"))
+    roots = get_platform().default_user_roots(home)
+    documents = Path(os.environ.get("ENV_SCANNER_DOCUMENTS") or roots["documents"])
+    desktop = Path(os.environ.get("ENV_SCANNER_DESKTOP") or roots["desktop"])
+    downloads = Path(os.environ.get("ENV_SCANNER_DOWNLOADS") or roots["downloads"])
+    books = Path(os.environ.get("ENV_SCANNER_BOOKS") or roots["books"])
     output = Path(args.output)
     try:
         payload = collect_samples(documents, desktop, downloads, books, mode, args.explicit)

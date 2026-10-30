@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""只读采集用户目录的计数和体积。计数是真实总量，不按扫描模式截断。"""
+"""只读采集用来判断用户在做什么的文件。
+
+计数不按扫描模式截断。安装包、压缩包、日志、私钥文件和软件数据目录不计入。
+"""
 
 import argparse
 import json
 import os
 import platform
+import re
 import shutil
-import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+from platforms import get_platform
 
 
 DEFAULT_SKIP_DIR_NAMES = {
@@ -22,10 +27,43 @@ DEFAULT_SKIP_DIR_NAMES = {
     ".git",
     "node_modules",
     "__pycache__",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    "target",
+    "vendor",
+    "QQ",
+    "Tencent Files",
+    "WeChat",
+    "WeChat Files",
+    "xwechat_files",
+    "微信",
+    "DingTalk",
+    "WXWork",
+    "log",
+    "logs",
+    "crash",
+    "crashes",
+    "CrashReporter",
+    "Crashpad",
+    "cache",
+    "Caches",
+    "tmp",
+    "temp",
+    "__MACOSX",
 }
-DEFAULT_SKIP_FILE_NAMES = {".env", "credentials.json", "id_rsa", "id_ed25519"}
-DEFAULT_SKIP_FILE_SUFFIXES = {".pem", ".p12", ".kdbx"}
+DEFAULT_SKIP_FILE_NAMES = {
+    ".env", "credentials.json", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa",
+}
+DEFAULT_SKIP_FILE_SUFFIXES = {
+    ".pem", ".p12", ".kdbx", ".ppk", ".pfx", ".cer", ".crt", ".p8", ".keystore",
+    ".dmg", ".pkg", ".exe", ".msi", ".msix", ".apk", ".deb", ".rpm", ".appimage",
+    ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".iso", ".cab",
+    ".log",
+}
 DEFAULT_SKIP_SUBSTRINGS = ("wallet", "crypto", "seed")
+SENSITIVE_TOKEN_RE = re.compile(r"[\s_]+")
 
 
 class RootUnreadable(Exception):
@@ -46,31 +84,53 @@ def load_skip_rules():
         "substrings": DEFAULT_SKIP_SUBSTRINGS,
     }
     path = config_path()
-    if not path.is_file():
-        return rules
-    try:
-        config = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return rules
-    filtering = config.get("features", {}).get("smart_filtering", {})
-    if filtering.get("skip_dir_names"):
-        rules["dir_names"] = set(filtering["skip_dir_names"])
-    if filtering.get("skip_file_names"):
-        rules["file_names"] = set(filtering["skip_file_names"])
-    if filtering.get("skip_file_suffixes"):
-        rules["suffixes"] = {s.lower() for s in filtering["skip_file_suffixes"]}
-    if filtering.get("skip_file_substrings"):
-        rules["substrings"] = tuple(s.lower() for s in filtering["skip_file_substrings"])
+    if path.is_file():
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            config = {}
+        filtering = config.get("features", {}).get("smart_filtering", {})
+        if filtering.get("skip_dir_names"):
+            rules["dir_names"] = set(filtering["skip_dir_names"])
+        if filtering.get("skip_file_names"):
+            rules["file_names"] = set(filtering["skip_file_names"])
+        if filtering.get("skip_file_suffixes"):
+            rules["suffixes"] = {s.lower() for s in filtering["skip_file_suffixes"]}
+        if filtering.get("skip_file_substrings"):
+            rules["substrings"] = tuple(s.lower() for s in filtering["skip_file_substrings"])
+    rules["dir_names_folded"] = {name.casefold() for name in rules["dir_names"]}
     return rules
 
 
+def name_has_sensitive_token(name, tokens):
+    """wallet / crypto / seed 按整词匹配，避免吃掉 seed-round 这种普通文件名。
+
+    整段文件名（去掉扩展名）相等，或被空格、下划线切开后有一段相等，才跳过。
+    连字符不切开，所以种子轮材料还在。
+    """
+    lowered = name.lower()
+    suffix = Path(lowered).suffix
+    stem = lowered[: -len(suffix)] if suffix else lowered
+    parts = [part for part in SENSITIVE_TOKEN_RE.split(stem) if part]
+    token_set = {token.lower() for token in tokens}
+    return any(part in token_set for part in parts)
+
+
 def skip_dir(name, rules):
+    """点开头、应用包、软件数据目录、日志和缓存目录不往下走。
+
+    目录名整段相等，忽略大小写。QQ笔记 这种用户自己的目录不在名单里。
+    """
     if name.startswith("."):
         return True
-    if name in rules["dir_names"]:
+    if name.lower().endswith(".app"):
         return True
-    lowered = name.lower()
-    return any(part in lowered for part in rules["substrings"])
+    folded = rules.get("dir_names_folded")
+    if folded is None:
+        folded = {item.casefold() for item in rules["dir_names"]}
+    if name.casefold() in folded:
+        return True
+    return name_has_sensitive_token(name, rules["substrings"])
 
 
 def skip_file(name, rules):
@@ -79,8 +139,7 @@ def skip_file(name, rules):
     suffix = Path(name).suffix.lower()
     if suffix in rules["suffixes"]:
         return True
-    lowered = name.lower()
-    return any(part in lowered for part in rules["substrings"])
+    return name_has_sensitive_token(name, rules["substrings"])
 
 
 def assert_root_readable(root):
@@ -126,17 +185,9 @@ def system_info():
         hostname = os.environ["ENV_SCANNER_HOSTNAME_OVERRIDE"]
     else:
         hostname = platform.node()
-    version = platform.release()
-    if platform.system() == "Darwin":
-        try:
-            version = subprocess.check_output(
-                ["sw_vers", "-productVersion"], text=True, stderr=subprocess.DEVNULL
-            ).strip() or version
-        except (OSError, subprocess.CalledProcessError):
-            pass
     return {
         "os": platform.system(),
-        "version": version,
+        "version": get_platform().os_version(),
         "kernel": platform.release(),
         "arch": platform.machine(),
         "hostname": hostname,
@@ -243,6 +294,9 @@ def collect(documents, desktop, downloads, books, mode):
     rules = load_skip_rules()
     warnings = []
     for root in (documents, desktop, downloads, books):
+        if not root.exists():
+            warnings.append(f"missing_root:{root}")
+            continue
         assert_root_readable(root)
 
     doc_files = walk(documents, rules, warnings)
@@ -291,7 +345,15 @@ def collect(documents, desktop, downloads, books, mode):
         },
         "scan_scope": {
             "type": "user_files_only",
-            "excluded": ["system", "logs", "cache", "sensitive_dirs"],
+            "excluded": [
+                "system",
+                "logs",
+                "cache",
+                "sensitive_dirs",
+                "installers",
+                "archives",
+                "app_data_dirs",
+            ],
             "app_names_read_separately": True,
         },
         "scan_warnings": warnings,
@@ -311,10 +373,11 @@ def main():
     parser.add_argument("--mode", default="deep")
     args = parser.parse_args()
     home = Path.home()
-    documents = Path(os.environ.get("ENV_SCANNER_DOCUMENTS", home / "Documents"))
-    desktop = Path(os.environ.get("ENV_SCANNER_DESKTOP", home / "Desktop"))
-    downloads = Path(os.environ.get("ENV_SCANNER_DOWNLOADS", home / "Downloads"))
-    books = Path(os.environ.get("ENV_SCANNER_BOOKS", desktop / "书籍"))
+    roots = get_platform().default_user_roots(home)
+    documents = Path(os.environ.get("ENV_SCANNER_DOCUMENTS") or roots["documents"])
+    desktop = Path(os.environ.get("ENV_SCANNER_DESKTOP") or roots["desktop"])
+    downloads = Path(os.environ.get("ENV_SCANNER_DOWNLOADS") or roots["downloads"])
+    books = Path(os.environ.get("ENV_SCANNER_BOOKS") or roots["books"])
     mode = normalize_mode(args.mode)
     try:
         payload = collect(documents, desktop, downloads, books, mode)

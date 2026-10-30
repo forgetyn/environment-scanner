@@ -6,11 +6,17 @@ import re
 from pathlib import Path
 
 SECRET_PATTERNS = (
-    (re.compile(r"BEGIN (?:OPENSSH |RSA )?PRIVATE KEY"), "private_key"),
-    (re.compile(r"(?i)\b(?:password|passwd|api_key|secret)\s*[:=]\s*\S+"), "credential_assignment"),
+    (re.compile(r"BEGIN\s+(?:[A-Z0-9]+\s+)*PRIVATE\s+KEY"), "private_key"),
+    (re.compile(r"PuTTY-User-Key-File"), "private_key"),
+    (
+        re.compile(
+            r"(?i)(?:^|[^A-Za-z0-9])(?:[A-Za-z0-9]+_)?[\"']?"
+            r"(?:password|passwd|api_key|secret)[\"']?\s*[:=]"
+        ),
+        "credential_assignment",
+    ),
+    (re.compile(r"(?:密码|口令)\s*[:=：]"), "credential_assignment"),
 )
-
-
 def is_noise(text):
     if re.match(r"^#{1,6}\s", text):
         return True
@@ -24,8 +30,12 @@ def is_noise(text):
 
 
 def secret_reason(text):
+    if not text:
+        return None
+    # UTF-16 按错误编码读进来时，ASCII 之间会留下 NUL，先去掉再认。
+    cleaned = text.replace("\x00", "")
     for pattern, reason in SECRET_PATTERNS:
-        if pattern.search(text):
+        if pattern.search(cleaned):
             return reason
     return None
 

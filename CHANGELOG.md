@@ -7,13 +7,98 @@
 
 ## [Unreleased]
 
+- 新增阅读文档 `docs/scan-logic.html`：按 v4.2.0 代码整理扫描流程、跳过规则、采样名额、日记认定和判断校验。不改扫描行为。阅读页在 v4.3.0 补上了解释器选择，并改成对照当前版本。
+
+## [4.3.0] - 2026-10-26
+
+### 新增
+- 工具自带 CPython 3.12.14（python-build-standalone `20260825` 的 `install_only` 压缩包），覆盖 mac-arm64、mac-x86_64、windows-amd64、windows-arm64。压缩包在 `runtime/vendor/`，附带 SHA256 清单和 CPython 许可证。用户不用安装 Python，不用改 PATH，也不用管理员权限。
+- `scripts/find-python.sh` 与 `scripts/find-python.ps1` 用同一顺序选择解释器：`ENV_SCANNER_PYTHON`（设了但不能用就停）、已解压且版本标记一致的 `~/.environment-scanner/runtime/<平台>-<架构>/`、PATH 里的 `python3` 然后 `python`、最后校验 SHA256 再解压。已经能跑的系统 Python（3.9 及以上）不会触发解压。路径里带 `WindowsApps` 的商店替身不会被启动。
+- Windows 第 2 步入口 `scripts/generate-final-report.ps1`。证据收集和最终报告都走这份选择逻辑。`scripts/collect-data.sh` 也不再写死 `python3`。
+- 解压后如果出现 `python*._pth`，改写成带标准库 zip、当前目录和 `import site`。当前这四份压缩包没有该文件；行为测试用夹具锁住改写。
+
+### 说明
+- python.org 的 3.12.14 目录里没有 Windows embeddable zip，只有源码包。Windows 与 macOS 都用同一类可直接解压的独立构建。扫描过程不下载解释器，也不调用 winget、微软商店或 `xcode-select --install`。
+- 从网络下载的技能目录里，macOS 可能拦住未签名的解释器。脚本不会清除隔离标记，也不会关闭 Gatekeeper。本机复制或 git 检出通常可以直接运行。
+- 32 位 Windows 不支持。Linux 仍没有扫描入口。
+- 版本号对齐为 `v4.3.0`（`SKILL.md` / `config.json` / `scripts/run-scan.sh` / `scripts/run-scan.ps1` / `scripts/lib/evidence_pack.py` / `scripts/lib/judgment.py`）。
+
+### 测试
+- 行为 26：商店替身丢掉、立刻失败的解释器丢掉、`ENV_SCANNER_PYTHON` 优先且坏了不回退、没有可用系统解释器时解压夹具并改写 `._pth`，删掉压缩包后第二次仍用已解压的解释器。行为回归共 26 项。
+- 全量增加四份压缩包的 SHA256、ps1 的 UTF-8 BOM 与 CRLF，以及当前 Mac 架构解压后能 `import sys` 并导入 `common`。Windows 压缩包只校验，不执行。全量 46 项。
+
+### 回归
+- 快速测试通过；行为 26/26；全量 46 通过 / 0 失败 / 0 警告。`find-python.ps1`、`generate-final-report.ps1` 与 `run-scan.ps1` 仍未在真实 Windows 上执行。
+
+## [4.2.0] - 2026-10-26
+
 ### 变更
-- 测试脚本从根目录移至 `tests/`（`tests/test-skill.sh` / `tests/test-skill-behavior.sh` / `tests/test-skill-full.sh`），并修正脚本内 `SKILL_DIR` 定位（指向仓库根）与脚本间互相引用路径。测试脚本仅用于开发迭代，技能运行时不依赖，行为不变。移动后回归验证：快速 / 行为 21 项 / 全量 29 项，0 失败 0 警告。
-- 重构 `AGENTS.md` 为纯全局指南（项目定位 / 当前快照 / 目录结构与核心文件入口 / 归档说明 / 已知限制与待处理 / 快速检查 / 迭代约束 / 留痕规则 / 经验沉淀）；原文件内的变更记录与修复历史全部并入 `CHANGELOG.md`（各版本节已完整覆盖同等内容，无信息丢失），此后变更记录只在 `CHANGELOG.md` 维护。
+- 日记不再按「文件名开头是不是日期」来认。那只是某一种个人命名习惯。Obsidian 只读 `daily-notes.json` 的 `folder`，以及 periodic-notes 里已经启用且写了目录的 daily / weekly / monthly / quarterly。Logseq 读 `logseq/config.edn` 的 `:journals-directory`；没写这个键时，仅当库内存在默认目录 `journals` 才用它。目录里的 Markdown 都算，不用 format 过滤文件名。配置解析不出目录名时记 `journal_config_unparsed:`，不把整个库当成日记。证据条目增加 `kind` 和 `format`。报告「日记习惯」带上每日 / 每周 / 每月 / 每季。
+- 采样的日记池用同一份目录。没有知识库配置时，日期开头的文件留在工作池，按工作文件的每目录上限和回填处理。120、日记 8、每目录 3、下载 12、书籍 4 不变。
+- 计数和采样跳过说明不了「用户在做什么」的文件：安装包与磁盘镜像、压缩包、`.log`、名为 log / logs / crash / cache / tmp 的目录、常见聊天软件的数据目录（目录名整段相等，`QQ笔记` 仍会看）、以 `.app` 结尾的应用包。私钥文件补上 `.ppk` `.pfx` `.cer` `.crt` `.p8` `.keystore`，以及 `id_ecdsa` `id_dsa`，打开前丢掉。`.key` 仍是 Keynote。笔记里贴出的私钥和口令仍整份拒绝。
+- `count_is_total` 仍表示不按扫描模式截断。跳过名单排除的文件本来就不在计数里。计数是用来判断用户在做什么的文件。
+- Logseq 图的标记改为文件 `logseq/config.edn`，不再把子目录 `.logseq/` 当成图。
+
+### 测试
+- 行为 21、23、25 改为锁知识库配置和跳过名单，不再锁「文件名开头是日期」。项数仍是 25。全量仍是 33，版本断言改为 `4.2.0`。行为 25 的 Logseq 夹具改为 `logseq/config.edn`，并断言只有 `.logseq/` 的目录不是图。
+
+### 说明
+- 版本号对齐为 `v4.2.0`（`SKILL.md` / `config.json` / `scripts/run-scan.sh` / `scripts/run-scan.ps1` / `scripts/lib/evidence_pack.py` / `scripts/lib/judgment.py`）。
+- 回归：快速测试通过；行为 25/25；全量 33 通过 / 0 失败 / 0 警告。审查与责任点校验见 `docs/reviews/07-test-report.md`。
+
+## [4.1.1] - 2026-10-25
+
+### 修复
+- 自述深读不再用子串。`关于我们`、`如何写简历`、`简历模板` 不会被当成「这个人是谁」。文件名要等于关键词，或以关键词结尾。多个知识库合起来最多深读 3 份。
+- 日记名额只认开头就是日期的文件名。`1.1 背景` 和 `周报2026-10-01` 留在工作文件池。`2024-01-12`、`10.25、记录` 仍算日记。
+- 近期名单补上 `.doc`、`.rtf`、`.pages`、`.key`、`.numbers`，只留文件名，不读正文。`wallet` / `crypto` / `seed` 按整词匹配，`seed-round.docx` 不再被静默丢掉。
+- 多个 OneDrive 目录时跳过空的 `Documents` / `Desktop`。扫描根不存在时写入 `missing_root:`，不把扫描判失败。
+- 私钥识别补上 EC、ENCRYPTED、PGP、PuTTY，以及标签被拆成多空格的 PEM 头。口令识别补上 JSON 引号、`DB_PASSWORD` 这类前缀，以及中文「密码 / 口令」。比较前去掉 NUL。
+- 渲染报告时，已深读文件的摘录和标题从报告副本里拿掉。证据 JSON 仍保留，给判断 AI 用。
+
+### 变更
+- 版本号对齐为 `v4.1.1`（`SKILL.md` / `config.json` / `scripts/run-scan.sh` / `scripts/run-scan.ps1` / `scripts/lib/evidence_pack.py` / `scripts/lib/judgment.py`）。
+
+### 测试
+- 行为回归新增行为 25，锁住上面六条：自述边界与全局最多 3 份、私钥不回填、日记文件名、整词跳过与办公文件名、缺失根警告、OneDrive 桌面/下载/书籍、新增密钥样例、报告打码。共 25 项。全量回归仍是 33 项，因为它把整份行为回归算作一条。
+
+### 说明
+- 回归：快速测试通过；行为 25/25；全量 33 通过 / 0 失败 / 0 警告。执行复审见 `docs/reviews/06-execution-review.md`，没有必须再改的实现偏离。
+
+## [4.1.0] - 2026-10-25
+
+### 新增
+- 平台适配器：`scripts/lib/platforms.py`（选择器，`ENV_SCANNER_PLATFORM` 可强制覆盖）、`platform_mac.py`、`platform_win.py`。应用清单、主目录发现跳过、默认用户目录、系统版本、报告打开都走适配器。其余模块不再混写 darwin / windows 分支。文件不叫 `platform.py`，避免遮蔽标准库。
+- Windows 原生证据入口 `scripts/run-scan.ps1`：五个阶段调用与 `run-scan.sh` 相同的 Python 库，不需要 Git Bash。文件头标明未实机验证；编码为 UTF-8 BOM，换行 CRLF。
+- 行为回归新增行为 24（mac 分隔符与 `Library` 跳过、`ENV_SCANNER_PLATFORM=windows` 下分号分隔、`AppData` 跳过、OneDrive `Documents` 探测、无 `winreg` 时 `windows_registry_unavailable`）。计划原稿写的是「行为 22」，该编号已被报告自动打开占用，适配器测试顺延为 24。
+- 近期样本不再按修改时间截取前 120 份。工作文件按父目录轮转（每目录最多 8，名额有剩余时只回填工作文件）；日记最多 8（每目录 3）、下载最多 12、书籍最多 4。显式路径仍优先保留。正文阅读顺序与这份名单一致，因此每个工作目录的文件会先于日记和下载得到摘录。下载和书籍即使位于桌面之下，也按对应扫描根归类。90 天、80 份正文、每份 4000 字、合计 12 万字不变。
+- 行为回归新增行为 23（下载、日记、书籍名额、单目录回填、显式旧文件）。
+- 最终报告渲染成功后自动用系统默认程序打开：macOS 调用 `open`，Windows 调用 `os.startfile`（交给 `.html` 的默认浏览器）。`ENV_SCANNER_OPEN_REPORT=0` 可关闭。打开失败只提示路径，不把已经写好的报告判成失败。证据报告是判断前的中间产物，不自动打开。
+- 行为回归新增行为 22（关闭时不打开、macOS 走 `open`、Windows 走 `os.startfile` 的替身、缺失 `os.startfile` 时失败但不撞掉已写好的报告）。Windows 打开分支用替身验证，未在真实 Windows 机器上执行。
+- `.gitattributes`：`*.sh` / `*.py` 锁定 LF，`*.ps1` 锁定 CRLF，避免 Windows `autocrlf` 把 shell 脚本变成 CRLF 后出现 bad interpreter。
+
+### 变更
+- 版本号对齐为 `v4.1.0`（`SKILL.md` / `config.json` / `scripts/run-scan.sh` / `scripts/run-scan.ps1` / `scripts/lib/evidence_pack.py` / `scripts/lib/judgment.py`）。
+- `ENV_SCANNER_INSIGHT_DOCS` 的多项分隔符从冒号改为分号。`ENV_SCANNER_APPLICATIONS` 使用适配器分隔符：macOS 冒号，Windows 分号。冒号会切开 `C:\...`。
+- Windows 默认扫描根会探测 `OneDrive*/Documents` 与 `OneDrive*/Desktop`，存在则优先，避免重定向后静默扫到空目录。主目录发现跳过 `AppData` 和会被 pathlib 穿透的 junction 名。
+- 测试脚本从根目录移至 `tests/`（`tests/test-skill.sh` / `tests/test-skill-behavior.sh` / `tests/test-skill-full.sh`），并修正脚本内 `SKILL_DIR` 定位（指向仓库根）与脚本间互相引用路径。测试脚本仅用于开发迭代，技能运行时不依赖。
+- 重构 `AGENTS.md` 为纯全局指南（项目定位 / 当前快照 / 目录结构与核心文件入口 / 归档说明 / 已知限制与待处理 / 快速检查 / 迭代约束 / 留痕规则 / 经验沉淀）；原文件内的变更记录与修复历史全部并入 `CHANGELOG.md`，此后变更记录只在 `CHANGELOG.md` 维护。
+
+### 修复
+- 无 `winreg` 时 `collect_app_names` 记 `windows_registry_unavailable` 并继续，不再静默返回空名单。
+- 对抗性审查里本轮不修的一项：Windows 记事本类 txt/csv 的 GBK 编码。采样仍按 UTF-8 忽略无法解码的字节，正文可能缺字。
+
+### 移除
+- 归档 `scripts/collect-data.ps1` → `bak/scripts/2026-10-25/collect-data.ps1`（映射见 `bak/manifests/move-manifest-2026-10-25.txt`）。它只有旧计数，没有 v4 的结构聚合和采样，留在入口会让人以为 Windows 已经完整支持。
 
 ### 仓库管理
-- 新增中文 `README.md`：项目定位、工作原理（采集 → 判断 → 校验渲染）、报告八大区块、安装（ZCode / Claude Code 技能目录）、对话触发用法与手动两步命令、扫描深度对照表、隐私与安全边界、环境变量表、平台支持与已知限制、开发测试入口。
-- 开源发布准备：新增 `.gitignore` 并初始化 git 仓库。不入库内容：本地归档 `bak/`（旧版本留档 + 历史真实报告）、真实扫描产物（`examples/report/` 内容与任意位置生成的 `environment-scanner-*.json|html`，含个人数据）、macOS/Python/编辑器文件（`.DS_Store`、`__pycache__/`、`.idea/` 等）、本地 AI 工具文件（`.claude/settings.local.json`、`.serena/`、`.zcode/plans/`）。`examples/report/` 以 `.gitkeep` 占位保持空目录。
+- 新增中文 `README.md`：项目定位、工作原理、报告区块、安装、用法、隐私、环境变量、平台限制、开发入口。
+- 开源发布准备：新增 `.gitignore` 并初始化 git 仓库。不入库内容：本地归档 `bak/`、真实扫描产物、`.DS_Store`、`__pycache__/`、编辑器目录、本地 AI 工具文件。`examples/report/` 以 `.gitkeep` 占位。
+
+### 说明
+- `run-scan.ps1` 未在真实 Windows 上执行。本机没有 PowerShell。审查结论：五阶段与 `run-scan.sh` 调用同一批 Python 模块；分号拆 `ENV_SCANNER_INSIGHT_DOCS`；`ENV_SCANNER_KB_DISCOVER=0` 可关知识库发现；产物为空则失败；`python3` 找不到再找 `python`。最终报告入口仍是 bash。
+- 真实 macOS 复扫（2026-10-25 21:52:03，证据 `environment-scanner-evidence-2026-10-25-215203.json`，版本 4.1.0）：近期文件 120、应用 46（与 174604 名单相同）、Obsidian vault 1 个、日记 `06-Daily Write` 83 篇 / `07-Daily Note` 60 篇、深读 3、AI 痕迹文件 35、证据报告已渲染。笔记总数 912（174604 为 911，20:53 的 4.0.0 扫描已是 912）。`06-Daily Write` 的周频从 2.71 显示为 2.70，持续天数仍是 215，差在小数进位。近期文件具体名单与 17:46 不完全相同，采样代码本次未改。
+- 回归：快速测试通过；行为 24/24；全量 33 通过 / 0 失败 / 0 警告。
 
 ## [4.0.0] - 2026-10-25
 

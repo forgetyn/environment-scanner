@@ -1,0 +1,5 @@
+没有必须改。
+
+临时目录里按仓库函数跑了三组夹具，没有扫家目录，也没有读 `~/.environment-scanner/reports`。只有 `logseq/config.edn`、且没有 `:journals-directory` 的图，证据 `journals` 是 1 条，`dir` 为 `journals`，`files` 为 12，`span_days` 为 1，`weekly_freq` 为 84.0；库内笔记一共 24，`pages/` 没有算进日记。采样里 12 篇「周一记事」只进 3 篇，12 个 pages 日期名和目录外的 `2024-01-12.md` 都是工作文件。只有 `.logseq/` 加 `journals/`、以及家目录式的 `.logseq/config.edn`，`find_vaults` 和 `discover_vaults` 都是 0。`:journals-directory (str "journals")` 解析不出目录名时 `journals` 为空，并记了 `journal_config_unparsed:`，没有退回默认 `journals`。注释掉的键仍用默认 `journals`。
+
+`QQ笔记/方案.md`、`关于QQ.md`、下载的 pdf / docx / md、Keynote `演示.key`、配置目录外的日期文件名都还在。`.key` 的 `body_skipped` 是 `keynote`，pdf 是 `pdf`，两份都没有被打开。含 `BEGIN EC PRIVATE KEY` 的笔记整份拒绝，哨兵不在样本 JSON、深读 JSON 和证据报告 HTML 里；`.ppk` 和 `id_ecdsa` 不在 `walk` 里，打开记录里也没有。名额仍是 120、日记 8、每目录 3、下载 12、书籍 4。`secret_reason` 没有变窄，跳过名单没有删项，四种周期仍只留 `[:3]`，文件名恰好是 `.pem` 的点文件仍不按后缀跳过。`CHANGELOG.md` 从 4.0.0 往下没有改，4.0.0 仍写着当时的 `.logseq/`；原先 Unreleased 的四条收进 4.1.0 时缩短了措辞，不改变上面的行为。Obsidian 把 folder 写成 `.` 时仍把整库算成每日，这是核实里明确不改的 08-3。

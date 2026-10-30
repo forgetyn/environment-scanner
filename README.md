@@ -1,6 +1,6 @@
 # Environment Scanner
 
-![version](https://img.shields.io/badge/version-4.0.0-blue) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%5Bpartial%5D-lightgrey) ![privacy](https://img.shields.io/badge/privacy-read--only%20%7C%20no%20upload-green)
+![version](https://img.shields.io/badge/version-4.3.0-blue) ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%5Bpartial%5D-lightgrey) ![privacy](https://img.shields.io/badge/privacy-read--only%20%7C%20no%20upload-green)
 
 **帮"不知道 AI 能帮我干什么"的人找到答案。**
 
@@ -36,7 +36,7 @@
 
 ## 安装
 
-**要求**：macOS（完整支持）；bash 与 Python 3（仅标准库，无第三方依赖）；`jq` 可选（缺失时走默认配置）。
+**要求**：macOS（完整支持）；bash。工具自带 CPython 3.12.14，用户不用另装 Python。电脑上如果已经有能运行的 Python 3.9 或更高版本，扫描会直接用它。`jq` 可选（缺失时走默认配置）。扫描只用 Python 标准库。
 
 把这个仓库克隆到你 AI 助手的技能目录（兼容采用 SKILL.md 技能规范的助手，如 ZCode、Claude Code）：
 
@@ -54,7 +54,7 @@ git clone https://github.com/forgetyn/environment-scanner.git ~/.claude/skills/e
 
 > 帮我扫扫电脑，看看我做的事情哪些可以用 AI 提效。
 
-技能会自动触发，跑完两步（采集 → 判断 → 校验渲染）后，助手会用白话给你讲前 3 条建议，并告诉你报告文件的位置。
+技能会自动触发，跑完两步（采集 → 判断 → 校验渲染）后，最终报告会用系统默认浏览器打开，助手再用白话讲前 3 条建议。
 
 也可以手动分步执行：
 
@@ -62,8 +62,14 @@ git clone https://github.com/forgetyn/environment-scanner.git ~/.claude/skills/e
 # 第 1 步：收集证据（默认 deep）
 bash scripts/run-scan.sh [quick|standard|deep]
 
+# Windows 第 1 步（未在真实 Windows 上验证，不需要 Git Bash）
+# powershell -File scripts/run-scan.ps1 [quick|standard|deep]
+
 # 第 2 步：AI 基于证据写判断文件后，校验并渲染报告
 bash scripts/generate-final-report.sh <evidence.json> <judgment.json> <output.html>
+
+# Windows 第 2 步（未在真实 Windows 上验证）
+# powershell -File scripts/generate-final-report.ps1 <evidence.json> <judgment.json> <output.html>
 ```
 
 ## 扫描范围与深度
@@ -76,13 +82,17 @@ bash scripts/generate-final-report.sh <evidence.json> <judgment.json> <output.ht
 | `standard` | 30 天 | 最多 40 份，每份 2000 字 | 日常使用 |
 | `deep`（默认） | 90 天 | 最多 80 份，每份 4000 字 | 完整判断 |
 
-知识库发现会自动识别 Obsidian / Logseq vault（`.obsidian/`、`.logseq/` 标记），统计笔记规模、顶层目录和日记习惯；并对命中自述词典（个人总结 / 简历 / 关于我 等）的最近 3 份文档深读（每份最多 500 行），这是理解"这个人是谁"的最强证据。
+候选名单最多 120 份，不按修改时间从头截取。工作文件按目录轮转；日记、下载、书籍各有单独上限，避免一批新下载或连续日记占满样本。日记只来自 Obsidian / Logseq 自己的配置目录，不按文件名猜。
+
+知识库发现会自动识别 Obsidian / Logseq vault（`.obsidian/`、`logseq/config.edn` 标记），统计笔记规模、顶层目录和日记习惯；并对命中自述词典（个人总结 / 简历 / 关于我 等）的最近 3 份文档深读（每份最多 500 行），这是理解"这个人是谁"的最强证据。
+
+安装包、压缩包、软件运行日志和软件自己的数据目录（例如 QQ、微信的数据目录）不进入计数，也不读内容。下载目录里的文档、表格、PDF 仍会看。
 
 ## 隐私与安全
 
 - **只读**：不修改、不删除、不移动扫描范围内的任何用户文件；只在自己的输出目录写 JSON 和 HTML
-- **全流程不出站**：不调用外部渲染服务，不从网络安装任何东西；报告里的图表库（Chart.js）仅在你打开报告查看时从 CDN 加载库文件本身，不上传任何数据
-- **敏感内容拒绝**：跳过 `.ssh`、`.gnupg`、Keychains 等敏感目录和 `id_rsa`、`.env`、`.pem` 等敏感文件；正文采样遇到私钥块或口令赋值时整份丢弃并禁止引用
+- **扫描不出站**：不调用外部渲染服务，不从网络安装任何东西，也不在扫描时下载 Python。报告里的图表库（Chart.js）仅在你打开报告查看时从 CDN 加载库文件本身，不上传任何数据
+- **敏感内容拒绝**：跳过 `.ssh`、`.gnupg`、Keychains 等敏感目录，以及 `id_rsa`、`id_ecdsa`、`.env`、`.pem`、`.ppk` 等私钥文件；正文采样遇到私钥块或口令赋值时整份丢弃并禁止引用。`.key` 是 Keynote，只留文件名
 - **深读正文不进报告**：自述文档的正文只用于 AI 判断，不会出现在报告的原始 JSON 折叠区
 - **不要求完全磁盘访问权限**；扫描根不可读时停止而不是报错硬闯
 
@@ -93,22 +103,26 @@ bash scripts/generate-final-report.sh <evidence.json> <judgment.json> <output.ht
 | `ENV_SCANNER_OUTPUT_DIR` | 输出目录 | `~/.environment-scanner/reports` |
 | `ENV_SCANNER_DOCUMENTS` / `_DESKTOP` / `_DOWNLOADS` / `_BOOKS` | 覆盖四个扫描根 | 系统默认目录 |
 | `ENV_SCANNER_HOME` / `ENV_SCANNER_DISCOVER_HOME=0` | 主目录发现的根 / 开关 | `~` / 开启 |
-| `ENV_SCANNER_APPLICATIONS` | 应用清单扫描根 | `/Applications`、`~/Applications` |
+| `ENV_SCANNER_APPLICATIONS` | 应用清单扫描根。多项之间 macOS 用冒号，Windows 用分号 | `/Applications`、`~/Applications` |
+| `ENV_SCANNER_INSIGHT_DOCS` | 额外洞察文档，多项用分号 | 空 |
+| `ENV_SCANNER_PLATFORM` | 强制适配器：`darwin` / `windows` / `linux` | 跟随本机系统 |
 | `ENV_SCANNER_KB_DISCOVER=0` | 关闭知识库发现 | 开启 |
+| `ENV_SCANNER_OPEN_REPORT=0` | 关闭最终报告自动打开 | 开启（macOS `open`，Windows 文件关联） |
+| `ENV_SCANNER_PYTHON` | 指定解释器绝对路径。设了但不能运行（低于 3.9 或无法启动）时扫描停止 | 自动选择 |
 
 ## 平台支持与已知限制
 
 - **macOS**：完整支持（本项目的开发与回归环境）
-- **Windows**：部分支持——计数脚本（PowerShell）和应用清单（注册表）代码路径已就绪，但**未在真实 Windows 机器上验证过**；内容采样尚未移植到 PowerShell
-- **Linux**：暂不支持（无自动采集脚本）
+- **Windows**：证据收集入口 `scripts/run-scan.ps1`，最终报告入口 `scripts/generate-final-report.ps1`。两步调用同一套 Python 库，不需要 Git Bash，也不需要用户另装 Python。应用清单走注册表和 Program Files，默认文档/桌面会探测 OneDrive 重定向目录，主目录发现会跳过 `AppData`。这些路径**未在真实 Windows 机器上验证过**。32 位 Windows 不支持。GBK 文本可能缺字
+- **Linux**：暂不支持自动采集（适配器只做目录兜底，没有扫描入口脚本）
 - PDF 和 Excel 文件目前只在证据里记录文件名，不解析正文；判断时 AI 可以直接读这些文件补足
 
 ## 开发
 
 ```bash
 bash tests/test-skill.sh          # 快速检查：文件齐全、语法合法
-bash tests/test-skill-behavior.sh # 行为回归（21 项，夹具全在临时目录）
-bash tests/test-skill-full.sh     # 全量回归（29 项：采集 + 校验矩阵 + 渲染合同）
+bash tests/test-skill-behavior.sh # 行为回归（26 项，夹具全在临时目录）
+bash tests/test-skill-full.sh     # 全量回归（46 项：采集 + 校验矩阵 + 渲染合同 + 自带解释器）
 ```
 
 文档结构：`SKILL.md` 是行为语义真相源（判断准则与判断文件合同），`config.json` 是配置真相源（只保留真实生效字段），`CHANGELOG.md` 记录全部版本历史，`AGENTS.md` 是给 AI 编码助手的项目指南。

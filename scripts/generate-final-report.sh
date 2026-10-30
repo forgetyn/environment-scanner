@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Environment Scanner v3.0.0 - 最终报告
-# 先校验 AI 判断（防编造文件），通过后渲染最终报告。
+# Environment Scanner v4.3.0 - 最终报告
+# 先校验 AI 判断（防编造文件），通过后渲染最终报告，再用系统默认程序打开。
 
 set -euo pipefail
 
@@ -23,11 +23,14 @@ for required in "$EVIDENCE_FILE" "$JUDGMENT_FILE" "$TEMPLATE_FILE"; do
     fi
 done
 
-PYTHON_BIN="$(command -v python3 || command -v python || true)"
-if [ -z "$PYTHON_BIN" ]; then
-    echo "❌ 需要 python3 才能生成最终报告"
+if ! PYTHON_BIN="$("$SCRIPT_DIR/find-python.sh")"; then
     exit 1
 fi
 
 "$PYTHON_BIN" "$SCRIPT_DIR/lib/judgment.py" validate "$EVIDENCE_FILE" "$JUDGMENT_FILE"
 "$PYTHON_BIN" "$SCRIPT_DIR/lib/judgment.py" render "$EVIDENCE_FILE" "$JUDGMENT_FILE" "$TEMPLATE_FILE" "$OUTPUT_FILE"
+
+# 报告已经落盘。打开失败只提示，避免把写好的报告判成失败。
+if ! "$PYTHON_BIN" "$SCRIPT_DIR/lib/open_report.py" "$OUTPUT_FILE"; then
+    echo "⚠️ 报告已生成，但没有自动打开。请手动打开: $OUTPUT_FILE"
+fi

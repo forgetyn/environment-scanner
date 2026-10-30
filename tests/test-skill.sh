@@ -27,14 +27,20 @@ check_file "CHANGELOG.md"
 check_file "config.json"
 check_file "scripts/run-scan.sh"
 check_file "scripts/collect-data.sh"
-check_file "scripts/collect-data.ps1"
+check_file "scripts/run-scan.ps1"
+check_file ".gitattributes"
 check_file "scripts/generate-final-report.sh"
+check_file "scripts/generate-final-report.ps1"
+check_file "scripts/find-python.sh"
+check_file "scripts/find-python.ps1"
+check_file "runtime/vendor/manifest.txt"
 check_file "scripts/lib/scan_collect.py"
 check_file "scripts/lib/sample_content.py"
 check_file "scripts/lib/app_inventory.py"
 check_file "scripts/lib/evidence_pack.py"
 check_file "scripts/lib/judgment.py"
 check_file "scripts/lib/common.py"
+check_file "scripts/lib/open_report.py"
 check_file "templates/final-report.html"
 check_file "tests/test-skill-behavior.sh"
 
@@ -53,7 +59,7 @@ fi
 
 echo ""
 echo "3. 脚本语法"
-for script in scripts/run-scan.sh scripts/collect-data.sh scripts/generate-final-report.sh; do
+for script in scripts/run-scan.sh scripts/collect-data.sh scripts/generate-final-report.sh scripts/find-python.sh; do
     if bash -n "$SKILL_DIR/$script"; then
         echo "   ✅ $script"
     else
@@ -61,7 +67,7 @@ for script in scripts/run-scan.sh scripts/collect-data.sh scripts/generate-final
         FAIL=$((FAIL + 1))
     fi
 done
-for lib in scan_collect sample_content app_inventory evidence_pack judgment common; do
+for lib in scan_collect sample_content app_inventory evidence_pack judgment common platforms platform_mac platform_win open_report; do
     if python3 -m py_compile "$SKILL_DIR/scripts/lib/$lib.py" 2>/dev/null; then
         echo "   ✅ scripts/lib/$lib.py"
     else

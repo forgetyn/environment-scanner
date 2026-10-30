@@ -3,6 +3,12 @@
 # Environment Scanner Skill - 完整测试脚本（v3.0.0：证据收集 + AI 判断校验 + 最终报告）
 
 set -u
+# 回归不要弹出浏览器。行为 22 会单独覆盖这个开关。
+export ENV_SCANNER_OPEN_REPORT=0
+unset ENV_SCANNER_PYTHON || true
+unset ENV_SCANNER_IGNORE_SYSTEM_PYTHON || true
+unset ENV_SCANNER_RUNTIME_HOME || true
+unset ENV_SCANNER_VENDOR_DIR || true
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_FILE="$SKILL_DIR/config.json"
@@ -44,9 +50,23 @@ files=(
     "CHANGELOG.md"
     "config.json"
     "scripts/collect-data.sh"
-    "scripts/collect-data.ps1"
     "scripts/run-scan.sh"
+    "scripts/run-scan.ps1"
+    ".gitattributes"
+    "scripts/lib/platforms.py"
+    "scripts/lib/platform_mac.py"
+    "scripts/lib/platform_win.py"
     "scripts/generate-final-report.sh"
+    "scripts/generate-final-report.ps1"
+    "scripts/find-python.sh"
+    "scripts/find-python.ps1"
+    "runtime/vendor/manifest.txt"
+    "runtime/vendor/README.md"
+    "runtime/vendor/LICENSE-CPython.txt"
+    "runtime/vendor/cpython-3.12.14+20260825-aarch64-apple-darwin-install_only.tar.gz"
+    "runtime/vendor/cpython-3.12.14+20260825-x86_64-apple-darwin-install_only.tar.gz"
+    "runtime/vendor/cpython-3.12.14+20260825-x86_64-pc-windows-msvc-install_only.tar.gz"
+    "runtime/vendor/cpython-3.12.14+20260825-aarch64-pc-windows-msvc-install_only.tar.gz"
     "scripts/lib/common.py"
     "scripts/lib/scan_collect.py"
     "scripts/lib/sample_content.py"
@@ -84,7 +104,8 @@ fi
 for script in \
     scripts/collect-data.sh \
     scripts/run-scan.sh \
-    scripts/generate-final-report.sh; do
+    scripts/generate-final-report.sh \
+    scripts/find-python.sh; do
     if bash -n "$SKILL_DIR/$script"; then
         test_pass "脚本语法通过: $script"
     else
@@ -93,7 +114,7 @@ for script in \
 done
 
 PY_OK=1
-for lib in common scan_collect sample_content app_inventory kb_discover evidence_pack judgment; do
+for lib in common scan_collect sample_content app_inventory kb_discover evidence_pack judgment platforms platform_mac platform_win open_report; do
     if ! python3 -m py_compile "$SKILL_DIR/scripts/lib/$lib.py" 2>/dev/null; then
         PY_OK=0
         test_fail "Python 语法失败: scripts/lib/$lib.py"
@@ -130,7 +151,7 @@ if env -u ENV_SCANNER_OUTPUT_DIR \
     && python3 - "$INTEG_HOME/.environment-scanner/reports/$INTEG_EVIDENCE" <<'PY'
 import json, sys
 ev = json.load(open(sys.argv[1], encoding="utf-8"))
-assert ev["version"] == "4.0.0"
+assert ev["version"] == "4.3.0"
 assert ev["scan"]["scan_mode"] == "deep"
 names = {item["name"] for item in ev["recent_files"]}
 assert {"活动方案.md", "嘉宾名单.txt"} <= names
@@ -356,6 +377,70 @@ then
     test_pass "零信号端到端：空判断通过校验且页面写明证据不足"
 else
     test_fail "零信号端到端失败"
+fi
+
+echo ""
+echo "4b  自带解释器"
+echo "-----------------------------------"
+
+if python3 - "$SKILL_DIR" <<'PY'
+import hashlib, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+vendor = root / "runtime" / "vendor"
+rows = {}
+version = ""
+for raw in (vendor / "manifest.txt").read_text(encoding="utf-8").splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        continue
+    parts = line.split()
+    if parts[0] == "version":
+        version = parts[1]
+        continue
+    rows[parts[0]] = parts[1:]
+assert version == "3.12.14", version
+assert set(rows) == {"mac-arm64", "mac-x86_64", "windows-amd64", "windows-arm64"}
+for plat, fields in rows.items():
+    sha, name, rel, strip = fields
+    digest = hashlib.sha256((vendor / name).read_bytes()).hexdigest()
+    assert digest == sha, (plat, digest, sha)
+    assert strip == "1"
+    assert rel in ("bin/python3", "python.exe")
+attrs = (root / ".gitattributes").read_text(encoding="utf-8")
+assert "runtime/vendor/*.tar.gz binary" in attrs
+for name in ("scripts/run-scan.ps1", "scripts/find-python.ps1", "scripts/generate-final-report.ps1"):
+    raw = (root / name).read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf"), name
+    body = raw[3:]
+    assert b"\r\n" in body, name
+    assert b"\n" not in body.replace(b"\r\n", b""), name
+PY
+then
+    test_pass "四份自带解释器校验和与 ps1 编码通过"
+else
+    test_fail "四份自带解释器校验和或 ps1 编码失败"
+fi
+
+case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64) SMOKE_PLAT="mac-arm64" ;;
+    Darwin-x86_64) SMOKE_PLAT="mac-x86_64" ;;
+    *) SMOKE_PLAT="" ;;
+esac
+SMOKE_HOME="$TMP_ROOT/bundled-runtime"
+if [ -n "$SMOKE_PLAT" ] \
+    && SMOKE_PY="$(
+        ENV_SCANNER_IGNORE_SYSTEM_PYTHON=1 \
+        ENV_SCANNER_RUNTIME_HOME="$SMOKE_HOME" \
+        ENV_SCANNER_VENDOR_DIR="$SKILL_DIR/runtime/vendor" \
+        PATH="/usr/bin:/bin" \
+        bash "$SKILL_DIR/scripts/find-python.sh"
+    )" \
+    && "$SMOKE_PY" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' \
+    && "$SMOKE_PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import common' "$SKILL_DIR/scripts/lib"
+then
+    test_pass "当前架构自带解释器可运行并导入 common（${SMOKE_PLAT}）"
+else
+    test_fail "当前架构自带解释器冒烟失败"
 fi
 
 rm -rf "$TMP_ROOT"

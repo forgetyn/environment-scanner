@@ -6,6 +6,7 @@
 通过 ENV_SCANNER_PLATFORM=windows 可在 macOS 上单测除注册表外的全部分支。
 """
 
+import os
 import platform as std_platform
 from pathlib import Path
 
@@ -14,6 +15,8 @@ def _registry_names(warnings):
     try:
         import winreg
     except ImportError:
+        # macOS 上没有 winreg。降级为警告，仍可用 Program Files 目录名。
+        warnings.append("windows_registry_unavailable")
         return []
     names = []
     roots = (
@@ -96,9 +99,16 @@ class WindowsAdapter:
     def default_user_roots(self, home):
         """探测 OneDrive 重定向：文档/桌面常被放进 OneDrive 目录。
 
-        规则：若存在 OneDrive*/Documents（或 Desktop）则优先使用它，
-        否则回落到主目录下的同名目录。
+        规则：按名字排序看 OneDrive*。目录里至少有一个条目才采用，
+        空目录跳过。都没有时回落到主目录下的同名目录。
         """
+
+        def has_entries(path):
+            try:
+                next(path.iterdir())
+            except (StopIteration, OSError):
+                return False
+            return True
 
         def resolve(kind, fallback):
             try:
@@ -107,7 +117,8 @@ class WindowsAdapter:
                 candidates = []
             for base in candidates:
                 target = base / kind
-                if target.is_dir():
+                # 空目录不算重定向成功，否则字典序靠前的空 OneDrive 会盖住有文件的那个。
+                if target.is_dir() and has_entries(target):
                     return target
             return fallback
 
@@ -129,3 +140,11 @@ class WindowsAdapter:
         except (AttributeError, IndexError):
             pass
         return std_platform.release()
+
+    def open_html(self, path):
+        """用文件关联打开报告。os.startfile 只在 Windows 上的 Python 里存在。"""
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
+            raise OSError("os.startfile 不可用")
+        startfile(os.fspath(path))
+        return 0

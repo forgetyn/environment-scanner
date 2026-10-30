@@ -14,7 +14,7 @@ from pathlib import Path
 
 from common import load_json, write_json
 
-VERSION = "4.0.0"
+VERSION = "4.3.0"
 
 AI_TEXT_MARKERS = (
     (re.compile(r"\bAI\b"), "AI"),

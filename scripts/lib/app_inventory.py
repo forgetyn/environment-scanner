@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""只读采集已安装应用名单。只收名字，不读任何应用内容和数据。"""
+"""只读采集已安装应用名单。只收名字，不读任何应用内容和数据。
+
+平台差异（macOS 的 .app 目录 / Windows 的注册表卸载表）在
+platform_mac / platform_win 适配器里实现，本模块只负责配置、
+环境变量覆盖、去重和上限。多路径环境变量的分隔符来自适配器
+（macOS 用 ':'，Windows 用 ';'）。
+"""
 
 import argparse
 import json
 import os
-import platform
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from platforms import get_platform
+
 DEFAULT_MAX_APPS = 400
-DEFAULT_MAC_DIRS = ["/Applications", "~/Applications"]
-DEFAULT_WINDOWS_PROGRAM_DIRS = [
-    r"C:\Program Files",
-    r"C:\Program Files (x86)",
-]
 
 
 def config_path():
@@ -24,8 +26,11 @@ def config_path():
 def load_inventory_config():
     config = {
         "max_apps": DEFAULT_MAX_APPS,
-        "mac_dirs": list(DEFAULT_MAC_DIRS),
-        "windows_program_dirs": list(DEFAULT_WINDOWS_PROGRAM_DIRS),
+        "mac_dirs": ["/Applications", "~/Applications"],
+        "windows_program_dirs": [
+            r"C:\Program Files",
+            r"C:\Program Files (x86)",
+        ],
     }
     path = config_path()
     if not path.is_file():
@@ -44,14 +49,8 @@ def load_inventory_config():
     return config
 
 
-def clean_name(name):
-    if name.endswith(".app"):
-        return name[: -len(".app")]
-    return name
-
-
-def names_from_dirs(dirs, warnings, app_bundle_only):
-    """列出目录下的一级条目名。app_bundle_only=True 时只收 *.app。"""
+def names_from_dirs(dirs, warnings):
+    """列出目录下的一级目录名（兼容 .app 包与普通目录），用于环境变量覆盖的测试根。"""
     names = []
     for raw_dir in dirs:
         root = Path(raw_dir).expanduser()
@@ -59,10 +58,7 @@ def names_from_dirs(dirs, warnings, app_bundle_only):
             continue
         try:
             entries = sorted(root.iterdir(), key=lambda item: item.name)
-        except PermissionError:
-            warnings.append(f"unreadable:{root}")
-            continue
-        except OSError:
+        except (PermissionError, OSError):
             warnings.append(f"unreadable:{root}")
             continue
         for entry in entries:
@@ -73,76 +69,24 @@ def names_from_dirs(dirs, warnings, app_bundle_only):
                     continue
             except OSError:
                 continue
-            if app_bundle_only and not entry.name.endswith(".app"):
-                continue
-            names.append(clean_name(entry.name))
-    return names
-
-
-def windows_registry_names(warnings):
-    """Windows 卸载表里的 DisplayName。winreg 只在 Windows 存在。"""
-    try:
-        import winreg
-    except ImportError:
-        return []
-    names = []
-    roots = (
-        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
-        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
-        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
-    )
-    for hive, key_path in roots:
-        try:
-            key = winreg.OpenKey(hive, key_path)
-        except OSError:
-            continue
-        index = 0
-        while True:
-            try:
-                sub_name = winreg.EnumKey(key, index)
-            except OSError:
-                break
-            index += 1
-            try:
-                with winreg.OpenKey(key, sub_name) as sub_key:
-                    display, _ = winreg.QueryValueEx(sub_key, "DisplayName")
-            except OSError:
-                continue
-            if isinstance(display, str) and display.strip():
-                names.append(display.strip())
-        winreg.CloseKey(key)
-    if not names:
-        warnings.append("windows_registry_unavailable")
+            name = entry.name
+            if name.endswith(".app"):
+                name = name[: -len(".app")]
+            names.append(name)
     return names
 
 
 def collect():
+    adapter = get_platform()
     config = load_inventory_config()
     warnings = []
-    sources = []
     env_roots = os.environ.get("ENV_SCANNER_APPLICATIONS", "")
     if env_roots:
-        dirs = [part for part in env_roots.split(":") if part]
-        sources = dirs
-        names = names_from_dirs(dirs, warnings, app_bundle_only=False)
+        sources = [part for part in env_roots.split(adapter.env_path_sep()) if part]
+        names = names_from_dirs(sources, warnings)
     else:
-        system = platform.system()
-        if system == "Darwin":
-            sources = list(config["mac_dirs"])
-            names = names_from_dirs(sources, warnings, app_bundle_only=True)
-        elif system == "Windows":
-            program_dirs = [
-                path
-                for path in config["windows_program_dirs"]
-                if Path(path).is_dir()
-            ]
-            sources = program_dirs
-            names = windows_registry_names(warnings)
-            names.extend(names_from_dirs(program_dirs, warnings, app_bundle_only=False))
-        else:
-            sources = []
-            names = []
-            warnings.append(f"app_inventory_unsupported_platform:{system}")
+        sources = adapter.app_roots(config)
+        names = adapter.collect_app_names(warnings, config)
 
     unique = []
     seen = set()
@@ -159,7 +103,7 @@ def collect():
         warnings.append("app_list_truncated")
     return {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "platform": platform.system().lower(),
+        "platform": adapter.name(),
         "apps": apps,
         "app_count": len(apps),
         "sources": sources,

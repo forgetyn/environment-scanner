@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """macOS 平台适配器：应用清单、主目录发现、用户目录默认值、系统版本。"""
 
+import os
 import platform as std_platform
 import subprocess
 from pathlib import Path
@@ -65,3 +66,8 @@ class MacAdapter:
             )
         except (OSError, subprocess.CalledProcessError):
             return std_platform.release()
+
+    def open_html(self, path):
+        """用默认应用打开报告。返回 open 的退出码。"""
+        completed = subprocess.run(["open", os.fspath(path)], check=False)
+        return completed.returncode

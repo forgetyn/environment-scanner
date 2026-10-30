@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Environment Scanner v4.0.0 - 证据收集入口
+# Environment Scanner v4.3.0 - 证据收集入口
 # 只读扫描：计数（含结构聚合）+ 近期文档采样 + 应用清单 + 知识库发现 → 证据文件 + 证据报告。
 # 建议由会话 AI 基于证据判断（含全局诊断与综合层），再由 generate-final-report.sh 校验后渲染。
 
@@ -26,9 +26,7 @@ case "$SCAN_MODE" in
         ;;
 esac
 
-PYTHON_BIN="$(command -v python3 || command -v python || true)"
-if [ -z "$PYTHON_BIN" ]; then
-    echo "❌ 需要 python3（或 python）才能扫描"
+if ! PYTHON_BIN="$("$SCRIPT_DIR/find-python.sh")"; then
     exit 1
 fi
 
@@ -43,7 +41,7 @@ EVIDENCE_REPORT_FILE="$OUTPUT_DIR/environment-scanner-evidence-report-$TIMESTAMP
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "🦞 Environment Scanner v4.0.0"
+echo "🦞 Environment Scanner v4.3.0"
 echo "================================"
 echo "扫描模式: $SCAN_MODE"
 echo "输出目录: $OUTPUT_DIR"
@@ -55,7 +53,8 @@ bash "$SCRIPT_DIR/collect-data.sh" "$DATA_FILE" "$SCAN_MODE"
 echo ""
 DOC_ARGS=()
 if [ -n "${ENV_SCANNER_INSIGHT_DOCS:-}" ]; then
-    IFS=':' read -r -a ENV_DOCS <<< "$ENV_SCANNER_INSIGHT_DOCS"
+    # 多路径用分号：冒号会切开 Windows 盘符（C:\…）。macOS 路径不含分号。
+    IFS=';' read -r -a ENV_DOCS <<< "$ENV_SCANNER_INSIGHT_DOCS"
     DOC_ARGS+=("${ENV_DOCS[@]}")
 fi
 if [ "$#" -gt 1 ]; then
@@ -104,4 +103,5 @@ echo "✅ 证据报告: $EVIDENCE_REPORT_FILE"
 echo "ℹ️ 下一步: 由会话 AI 只读上面的证据文件，按 SKILL.md 的判断准则写"
 echo "   $OUTPUT_DIR/environment-scanner-judgment-$TIMESTAMP.json"
 echo "   再运行 bash scripts/generate-final-report.sh <evidence> <judgment> <output.html>"
+echo "   Windows 运行: powershell -File scripts/generate-final-report.ps1 <evidence> <judgment> <output.html>"
 echo "ℹ️ 扫描根目录中的用户文件不会被修改。"

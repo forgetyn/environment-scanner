@@ -1,0 +1,5 @@
+# 锁住换行，避免 Windows autocrlf 把 shell 脚本变成 CRLF 后出现 bad interpreter。
+*.sh text eol=lf
+*.py text eol=lf
+*.ps1 text eol=crlf
+runtime/vendor/*.tar.gz binary

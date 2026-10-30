@@ -16,7 +16,7 @@ from pathlib import Path
 
 from common import load_json
 
-VERSION = "4.0.0"
+VERSION = "4.3.0"
 DEFAULT_MAX_SUGGESTIONS = 10
 DEFAULT_MAX_PRIORITIES = 3
 DEFAULT_MAX_ACTIVITIES = 8
@@ -563,8 +563,10 @@ def kb_html(evidence):
     blocks = []
     for vault in evidence.get("knowledge_bases") or []:
         journals = vault.get("journals") or []
+        kind_text = {"daily": "每日", "weekly": "每周", "monthly": "每月", "quarterly": "每季"}
         journal_text = "、".join(
-            f"「{j.get('dir')}」{j.get('files')} 篇/持续 {j.get('span_days')} 天" for j in journals
+            f"「{j.get('dir')}」{kind_text.get(j.get('kind') or '', '')}{j.get('files')} 篇/持续 {j.get('span_days')} 天"
+            for j in journals
         )
         deep_names = "、".join(
             f"《{item.get('name')}》" for item in evidence.get("deep_reads") or []
@@ -648,8 +650,23 @@ def render(evidence, judgment, template_text):
 
     charts = chart_payload(evidence)
     raw_payload = json.loads(json.dumps(evidence, ensure_ascii=False))
+    deep_paths = set()
+    deep_names = set()
     for item in raw_payload.get("deep_reads") or []:
+        if item.get("path"):
+            deep_paths.add(str(item.get("path")))
+        if item.get("name"):
+            deep_names.add(str(item.get("name")))
         item["text"] = f"（{item.get('line_count', 0)} 行正文，仅判断 AI 可读，报告不展示）"
+    for item in raw_payload.get("recent_files") or []:
+        same = str(item.get("path") or "") in deep_paths or (
+            not item.get("path") and str(item.get("name") or "") in deep_names
+        )
+        if not same:
+            continue
+        if item.get("excerpt") or item.get("heading"):
+            item["excerpt"] = "（与深读为同一文件，正文不在报告中展示）"
+            item["heading"] = ""
     raw_json = html.escape(json.dumps(raw_payload, ensure_ascii=False, indent=2))
     chart_data_json = json.dumps(charts, ensure_ascii=False)
     kb_blocks = kb_html(evidence)

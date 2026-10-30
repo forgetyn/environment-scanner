@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Environment Scanner 扫描逻辑 · v4.3.0</title>
+<style>
+  :root {
+    --bg: #efe8dc;
+    --paper: #fffdf8;
+    --ink: #1c1915;
+    --muted: #6d645b;
+    --line: #e3d9cb;
+    --teal: #0d6a64;
+    --teal-soft: #e4f2f0;
+    --amber: #9a5520;
+    --amber-soft: #f8ecdf;
+    --rose: #8d3a38;
+    --rose-soft: #f8e7e4;
+    --navy: #243044;
+    --navy-soft: #e8edf3;
+    --side: #17211e;
+    --side-text: #e8e2d6;
+    --side-dim: #a8b2a8;
+    --shadow: 0 10px 30px rgba(40, 30, 18, 0.06);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 500px at 10% -10%, #f7f1e6 0%, transparent 55%),
+      var(--bg);
+    font: 16.5px/1.65 "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+  }
+  a { color: var(--teal); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  code, .mono {
+    font-family: "SF Mono", "JetBrains Mono", "Source Code Pro", ui-monospace, monospace;
+    font-size: 0.86em;
+  }
+  code {
+    background: #f3ece2;
+    padding: 0.08em 0.38em;
+    border-radius: 4px;
+  }
+  .layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+  nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: auto;
+    background: var(--side);
+    color: var(--side-text);
+    padding: 28px 18px 40px;
+  }
+  nav .brand { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #8fd0c8; margin: 0 8px 6px; }
+  nav .ver { margin: 0 8px 22px; color: var(--side-dim); font-size: 13px; }
+  nav a {
+    display: block;
+    color: var(--side-text);
+    text-decoration: none;
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+  nav a:hover { background: rgba(255,255,255,0.06); }
+  nav .group { margin: 16px 8px 6px; font-size: 11px; letter-spacing: 0.12em; color: #7f8c84; }
+  main { padding: 36px 40px 80px; max-width: 1080px; }
+  header.hero {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 32px 36px 28px;
+    box-shadow: var(--shadow);
+    margin-bottom: 22px;
+  }
+  header.hero p.kicker { margin: 0 0 8px; color: var(--teal); font-size: 13px; letter-spacing: 0.16em; }
+  h1 { font-size: 34px; line-height: 1.25; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-size: 26px; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h3 { font-size: 18px; margin: 22px 0 8px; }
+  .lead { font-size: 18px; margin: 0; max-width: 68ch; }
+  section {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px 32px 26px;
+    margin: 18px 0;
+    box-shadow: var(--shadow);
+  }
+  section > p { max-width: 78ch; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .pill {
+    background: var(--teal-soft);
+    color: #0c4f4b;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+  .callout {
+    border-left: 4px solid var(--teal);
+    background: var(--teal-soft);
+    padding: 12px 14px;
+    border-radius: 0 12px 12px 0;
+    margin: 14px 0;
+  }
+  .callout.amber { border-color: var(--amber); background: var(--amber-soft); }
+  .callout.rose { border-color: var(--rose); background: var(--rose-soft); }
+  .callout strong { display: block; margin-bottom: 2px; }
+  .figure {
+    margin: 16px 0 8px;
+    background: #fbf7f1;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px;
+    overflow-x: auto;
+  }
+  .figure svg { display: block; min-width: 720px; height: auto; }
+  .caption { color: var(--muted); font-size: 13px; margin: 4px 4px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 6px; font-size: 14.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; letter-spacing: 0.04em; }
+  tr:last-child td { border-bottom: 0; }
+  ul, ol { padding-left: 1.2em; }
+  li { margin: 4px 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+  .chip {
+    background: #f6f0e6;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 2px 8px;
+    font-size: 13px;
+  }
+  .chip em { font-style: normal; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card {
+    background: #fbf7f1;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .card h3 { margin-top: 0; }
+  .num { color: var(--teal); font-variant-numeric: tabular-nums; }
+  footer.note { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: relative; height: auto; }
+    nav .links { display: flex; flex-wrap: wrap; gap: 4px; }
+    .grid2 { grid-template-columns: 1fr; }
+    main { padding: 18px 14px 48px; }
+    header.hero, section { padding: 20px 16px; }
+    h1 { font-size: 28px; }
+  }
+  @media print {
+    nav { display: none; }
+    .layout { display: block; }
+    section, header.hero { break-inside: avoid; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <p class="brand">Environment Scanner</p>
+  <p class="ver">扫描逻辑说明 · v4.3.0</p>
+  <div class="links">
+    <div class="group">总览</div>
+    <a href="#goal">这个 skill 做什么</a>
+    <a href="#flow">两步流程</a>
+    <a href="#python">解释器从哪来</a>
+    <a href="#stages">五个采集阶段</a>
+    <div class="group">采集细节</div>
+    <a href="#roots">扫哪些目录</a>
+    <a href="#skip">三层跳过</a>
+    <a href="#sample">采样与名额</a>
+    <a href="#journal">日记怎么认定</a>
+    <a href="#kb">知识库与自述</a>
+    <a href="#secrets">私钥与口令</a>
+    <div class="group">判断与报告</div>
+    <a href="#evidence">证据与图表</a>
+    <a href="#judgment">判断合同与拒绝门</a>
+    <a href="#modes">三种深度</a>
+    <a href="#limits">有意不做的事</a>
+    <a href="#files">代码入口</a>
+  </div>
+</nav>
+<main>
+
+<header class="hero" id="goal">
+  <p class="kicker">对照当前代码 · 2026-10-26</p>
+  <h1>扫描是怎么做的</h1>
+  <p class="lead">脚本只负责收证据。会话里的 AI 根据证据判断哪几件事适合交给 AI、第一件怎么开始。本地脚本校验通过之后，才渲染最终报告。</p>
+  <div class="meta">
+    <span class="pill">版本 4.3.0</span>
+    <span class="pill">只读，不改用户文件</span>
+    <span class="pill">默认深度 deep</span>
+    <span class="pill">全程不出站</span>
+  </div>
+  <div class="callout" style="margin-top:18px">
+    <strong>给谁用</strong>
+    面向不知道「自己哪些事能用 AI 提效」的普通人。扫描看的是近期文档、已安装应用的名字、以及本机 Obsidian / Logseq 知识库。目标是看懂这个人在做什么，再决定 AI 能接哪一段。
+  </div>
+</header>
+
+<section id="flow">
+  <h2>两步流程</h2>
+  <p>入口有两个。第 1 步把电脑上的证据收成一份 JSON，并顺手渲染一页「证据报告」。第 2 步读会话 AI 写下的判断文件，校验失败就停，通过才写出最终 HTML 并打开。</p>
+  <div class="figure">
+    <svg viewBox="0 0 920 360" width="920" role="img" aria-labelledby="flowTitle">
+      <title id="flowTitle">两步流程：采集证据，再校验判断并打开最终报告</title>
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1.2 L 8 5 L 0 8.8 z" fill="#6d645b"/>
+        </marker>
+      </defs>
+      <text x="16" y="28" font-size="13" fill="#0d6a64" font-weight="700">第 1 步 · 脚本收证据</text>
+      <rect x="16" y="42" width="150" height="64" rx="10" fill="#243044"/>
+      <text x="91" y="68" text-anchor="middle" fill="#fff" font-size="13">用户说</text>
+      <text x="91" y="88" text-anchor="middle" fill="#d5dde8" font-size="12">帮我扫扫电脑</text>
+      <line x1="166" y1="74" x2="196" y2="74" stroke="#6d645b" marker-end="url(#arr)"/>
+      <rect x="198" y="42" width="168" height="64" rx="10" fill="#0d6a64"/>
+      <text x="282" y="68" text-anchor="middle" fill="#fff" font-size="13">run-scan.sh</text>
+      <text x="282" y="88" text-anchor="middle" fill="#d7f3f0" font-size="12">或 run-scan.ps1</text>
+      <line x1="366" y1="74" x2="396" y2="74" stroke="#6d645b" marker-end="url(#arr)"/>
+      <rect x="398" y="28" width="250" height="92" rx="10" fill="#fffdf8" stroke="#0d6a64"/>
+      <text x="523" y="52" text-anchor="middle" fill="#0d6a64" font-size="13" font-weight="700">五个阶段</text>
+      <text x="523" y="74" text-anchor="middle" fill="#1c1915" font-size="12">计数 → 采样 → 应用名</text>
+      <text x="523" y="94" text-anchor="middle" fill="#1c1915" font-size="12">→ 知识库 → 合并证据</text>
+      <line x1="648" y1="74" x2="678" y2="74" stroke="#6d645b" marker-end="url(#arr)"/>
+      <rect x="680" y="22" width="220" height="48" rx="10" fill="#e4f2f0" stroke="#0d6a64"/>
+      <text x="790" y="42" text-anchor="middle" fill="#0c4f4b" font-size="12">evidence-*.json</text>
+      <text x="790" y="58" text-anchor="middle" fill="#0c4f4b" font-size="11">给判断 AI 读</text>
+      <rect x="680" y="78" width="220" height="48" rx="10" fill="#f8ecdf" stroke="#9a5520"/>
+      <text x="790" y="98" text-anchor="middle" fill="#9a5520" font-size="12">evidence-report-*.html</text>
+      <text x="790" y="114" text-anchor="middle" fill="#9a5520" font-size="11">不自动打开</text>
+
+      <text x="16" y="168" font-size="13" fill="#9a5520" font-weight="700">中间 · 会话 AI 写判断</text>
+      <rect x="16" y="180" width="888" height="52" rx="10" fill="#fffdf8" stroke="#9a5520"/>
+      <text x="460" y="202" text-anchor="middle" fill="#1c1915" font-size="13">只读最新的证据 JSON。按 SKILL.md 的判断准则写 judgment JSON。</text>
+      <text x="460" y="220" text-anchor="middle" fill="#6d645b" font-size="12">不打开样本名单以外的文件。图表数字由渲染器注入，判断文件里不写图表。</text>
+
+      <text x="16" y="268" font-size="13" fill="#243044" font-weight="700">第 2 步 · 本地校验后才出最终报告</text>
+      <rect x="16" y="280" width="200" height="58" rx="10" fill="#243044"/>
+      <text x="116" y="304" text-anchor="middle" fill="#fff" font-size="13">generate-final-report.sh</text>
+      <text x="116" y="322" text-anchor="middle" fill="#d5dde8" font-size="12">或同名 .ps1</text>
+      <line x1="216" y1="309" x2="246" y2="309" stroke="#6d645b" marker-end="url(#arr)"/>
+      <rect x="248" y="280" width="180" height="58" rx="10" fill="#8d3a38"/>
+      <text x="338" y="304" text-anchor="middle" fill="#fff" font-size="13">validate</text>
+      <text x="338" y="322" text-anchor="middle" fill="#f8d9d4" font-size="12">失败就列出原因并停</text>
+      <line x1="428" y1="309" x2="458" y2="309" stroke="#6d645b" marker-end="url(#arr)"/>
+      <rect x="460" y="280" width="180" height="58" rx="10" fill="#0d6a64"/>
+      <text x="550" y="304" text-anchor="middle" fill="#fff" font-size="13">render</text>
+      <text x="550" y="322" text-anchor="middle" fill="#d7f3f0" font-size="12">同一套报告模板</text>
+      <line x1="640" y1="309" x2="670" y2="309" stroke="#6d645b" marker-end="url(#arr)"/>
+      <rect x="672" y="280" width="232" height="58" rx="10" fill="#e4f2f0" stroke="#0d6a64"/>
+      <text x="788" y="304" text-anchor="middle" fill="#0c4f4b" font-size="13">final-*.html 并打开</text>
+      <text x="788" y="322" text-anchor="middle" fill="#0c4f4b" font-size="11">OPEN_REPORT=0 可关</text>
+    </svg>
+    <p class="caption">证据报告是判断前的中间页，窗口不会自己弹出来。最终报告写好后才会用系统程序打开：macOS 用 open，Windows 用 os.startfile，Linux 兜底用 xdg-open。打开失败只提示路径，已经写好的文件仍然算成功。</p>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>第 1 步怎么启动</h3>
+      <p><code>bash scripts/run-scan.sh [quick|standard|deep]</code></p>
+      <p>不写模式时读 <code>config.json</code> 的 <code>default_config.scan_depth</code>，现在是 <span class="num">deep</span>。认不出的模式退回 deep。Windows 证据入口是 <code>scripts/run-scan.ps1</code>，最终报告入口是 <code>generate-final-report.ps1</code>。两步都还没有在真实 Windows 机器上跑过。解释器怎么选，见下一节。</p>
+    </div>
+    <div class="card">
+      <h3>产物放哪</h3>
+      <p>默认目录 <code>~/.environment-scanner/reports</code>，可用 <code>ENV_SCANNER_OUTPUT_DIR</code> 改。</p>
+      <p>文件名带秒级时间戳：<code>environment-scanner-data / samples / apps / kb / evidence</code> 的 JSON，外加 <code>evidence-report</code> 的 HTML。任一必备产物是空文件，整次扫描失败。</p>
+    </div>
+  </div>
+</section>
+
+<section id="python">
+  <h2>解释器从哪来</h2>
+  <p>扫描逻辑仍是原来的 Python 标准库脚本。用户不用安装 Python，不用改 PATH，也不用管理员权限。Mac 的 bash 入口和 Windows 的 PowerShell 入口用同一顺序，只把选中的解释器绝对路径交给后面的脚本。</p>
+  <div class="figure">
+    <svg viewBox="0 0 920 150" width="920" role="img" aria-labelledby="pyTitle">
+      <title id="pyTitle">解释器选择顺序：指定程序，已解压的私有目录，系统 Python，最后才解压工具自带的包</title>
+      <defs>
+        <marker id="arrPy" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1.2 L 8 5 L 0 8.8 z" fill="#6d645b"/>
+        </marker>
+      </defs>
+      <rect x="16" y="36" width="180" height="78" rx="10" fill="#243044"/>
+      <text x="106" y="66" text-anchor="middle" fill="#fff" font-size="13">1. 指定的程序</text>
+      <text x="106" y="88" text-anchor="middle" fill="#d5dde8" font-size="12">ENV_SCANNER_PYTHON</text>
+      <line x1="196" y1="75" x2="226" y2="75" stroke="#6d645b" marker-end="url(#arrPy)"/>
+      <rect x="228" y="36" width="200" height="78" rx="10" fill="#0d6a64"/>
+      <text x="328" y="66" text-anchor="middle" fill="#fff" font-size="13">2. 已经解压的</text>
+      <text x="328" y="88" text-anchor="middle" fill="#d7f3f0" font-size="12">私有目录，版本一致</text>
+      <line x1="428" y1="75" x2="458" y2="75" stroke="#6d645b" marker-end="url(#arrPy)"/>
+      <rect x="460" y="36" width="200" height="78" rx="10" fill="#fffdf8" stroke="#0d6a64"/>
+      <text x="560" y="66" text-anchor="middle" fill="#0d6a64" font-size="13" font-weight="700">3. 系统 Python</text>
+      <text x="560" y="88" text-anchor="middle" fill="#1c1915" font-size="12">3.9 及以上，能 import</text>
+      <line x1="660" y1="75" x2="690" y2="75" stroke="#6d645b" marker-end="url(#arrPy)"/>
+      <rect x="692" y="36" width="212" height="78" rx="10" fill="#e4f2f0" stroke="#0d6a64"/>
+      <text x="798" y="66" text-anchor="middle" fill="#0c4f4b" font-size="13">4. 解压自带的包</text>
+      <text x="798" y="88" text-anchor="middle" fill="#0c4f4b" font-size="12">校验 SHA256 之后</text>
+    </svg>
+    <p class="caption">前一步能用就停。电脑上已经有合格的系统 Python 时，不会解压自带的那一份。</p>
+  </div>
+  <ol>
+    <li>如果设置了 <code>ENV_SCANNER_PYTHON</code>，就只用它。它必须是一个能执行的文件，并且 <code>import sys</code> 后版本不低于 3.9。设了但不能用，扫描停下来，不再往下找。</li>
+    <li>如果 <code>~/.environment-scanner/runtime/&lt;平台&gt;-&lt;架构&gt;/</code> 里已经解压过，版本标记和工具清单一致，而且解释器能运行，就用它。</li>
+    <li>沿 PATH 先找 <code>python3</code>，再找 <code>python</code>。同样要能执行 <code>import sys</code>，版本不低于 3.9。路径里含 <code>WindowsApps</code> 的微软商店替身直接丢掉，不会不带参数去启动它。</li>
+    <li>否则核对压缩包的 SHA256，解压到上面的私有目录，再使用。校验不对就停，不使用坏包。</li>
+    <li>这个架构没有对应压缩包时，用白话说明并停止。不会打开微软商店，也不会安装 Xcode 命令行工具。</li>
+  </ol>
+  <p>自带的是 CPython 3.12.14，来自 python-build-standalone 的 <code>20260825</code> <code>install_only</code> 包。四份都在 <code>runtime/vendor/</code>：mac-arm64、mac-x86_64、windows-amd64、windows-arm64。python.org 的 3.12.14 目录只有源码包，没有 Windows embeddable zip，所以 Windows 用的是同一类解压即用的构建。扫描过程不下载这些文件。</p>
+  <p>解压后如果根目录出现 <code>python*._pth</code>，会改写成包含对应的标准库 zip、当前目录和 <code>import site</code>，这样脚本目录里的 <code>common.py</code> 仍能被导入。现在这四份包里没有该文件。</p>
+  <div class="callout">
+    <strong>Gatekeeper</strong>
+    技能文件夹若是从网络下载的，macOS 可能拦住未签名的解释器。脚本不会清除隔离标记，也不会关闭这项保护。本机复制或 git 检出通常可以直接运行。
+  </div>
+</section>
+
+<section id="stages">
+  <h2>五个采集阶段</h2>
+  <p>顺序固定。前一阶段的 JSON 是后一阶段的输入。知识库阶段可以关掉，关掉之后证据里的知识库和深读就是空的。</p>
+  <div class="figure">
+    <svg viewBox="0 0 920 168" width="920" role="img" aria-labelledby="stageTitle">
+      <title id="stageTitle">五个阶段从左到右串起来</title>
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1.2 L 8 5 L 0 8.8 z" fill="#6d645b"/>
+        </marker>
+      </defs>
+      <g font-size="12" text-anchor="middle">
+        <rect x="8" y="36" width="150" height="96" rx="10" fill="#fffdf8" stroke="#0d6a64"/>
+        <text x="83" y="58" fill="#0d6a64" font-weight="700">1 计数</text>
+        <text x="83" y="80" fill="#1c1915">scan_collect</text>
+        <text x="83" y="100" fill="#6d645b">四个根的文件数</text>
+        <text x="83" y="116" fill="#6d645b">体积与结构</text>
+        <line x1="158" y1="84" x2="176" y2="84" stroke="#6d645b" marker-end="url(#arr2)"/>
+        <rect x="178" y="36" width="150" height="96" rx="10" fill="#fffdf8" stroke="#0d6a64"/>
+        <text x="253" y="58" fill="#0d6a64" font-weight="700">2 采样</text>
+        <text x="253" y="80" fill="#1c1915">sample_content</text>
+        <text x="253" y="100" fill="#6d645b">近期文档摘录</text>
+        <text x="253" y="116" fill="#6d645b">最多 120 个名额</text>
+        <line x1="328" y1="84" x2="346" y2="84" stroke="#6d645b" marker-end="url(#arr2)"/>
+        <rect x="348" y="36" width="150" height="96" rx="10" fill="#fffdf8" stroke="#0d6a64"/>
+        <text x="423" y="58" fill="#0d6a64" font-weight="700">3 应用名</text>
+        <text x="423" y="80" fill="#1c1915">app_inventory</text>
+        <text x="423" y="100" fill="#6d645b">只收名字</text>
+        <text x="423" y="116" fill="#6d645b">上限 400</text>
+        <line x1="498" y1="84" x2="516" y2="84" stroke="#6d645b" marker-end="url(#arr2)"/>
+        <rect x="518" y="36" width="160" height="96" rx="10" fill="#fffdf8" stroke="#9a5520"/>
+        <text x="598" y="58" fill="#9a5520" font-weight="700">4 知识库</text>
+        <text x="598" y="80" fill="#1c1915">kb_discover</text>
+        <text x="598" y="100" fill="#6d645b">可设 =0 关闭</text>
+        <text x="598" y="116" fill="#6d645b">最多 3 个库</text>
+        <line x1="678" y1="84" x2="696" y2="84" stroke="#6d645b" marker-end="url(#arr2)"/>
+        <rect x="698" y="36" width="206" height="96" rx="10" fill="#e4f2f0" stroke="#0d6a64"/>
+        <text x="801" y="58" fill="#0d6a64" font-weight="700">5 合并 + 证据报告</text>
+        <text x="801" y="80" fill="#1c1915">evidence_pack</text>
+        <text x="801" y="100" fill="#6d645b">judgment render</text>
+        <text x="801" y="116" fill="#6d645b">此时还没有判断</text>
+      </g>
+    </svg>
+    <p class="caption">阶段 2 可以额外带上显式文档：环境变量 ENV_SCANNER_INSIGHT_DOCS 用分号拆开，再加上命令行从第 2 个参数起的路径。冒号会切开 Windows 盘符，所以这里用分号。</p>
+  </div>
+  <table>
+    <thead><tr><th>阶段</th><th>读什么</th><th>写出</th><th>失败时</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1 计数<br><code>collect-data.sh</code> → <code>scan_collect.py</code></td>
+        <td>四个扫描根里、跳过名单之外的全部文件。计数不按 quick / standard / deep 截断。</td>
+        <td><code>environment-scanner-data-*.json</code>：文件数、体积、扩展名、目录聚合、磁盘、系统信息、<code>scan_warnings</code>。</td>
+        <td>根目录存在但打不开：抛出 <code>RootUnreadable</code>，不写输出，扫描停止。根目录不存在：记 <code>missing_root:</code>，继续。子目录打不开：跳过并记 <code>unreadable:</code>。</td>
+      </tr>
+      <tr>
+        <td>2 采样<br><code>sample_content.py</code></td>
+        <td>同一批根，再加主目录有限发现。只把文档扩展名送进候选。</td>
+        <td><code>environment-scanner-samples-*.json</code>：<code>files</code>、<code>rejected_documents</code>、天数、警告。</td>
+        <td>扫描根不可读同样整次停止。单个文件读不出：记 <code>unreadable:</code>，换下一份。正文里有私钥或口令：整份丢进拒绝名单。</td>
+      </tr>
+      <tr>
+        <td>3 应用<br><code>app_inventory.py</code></td>
+        <td>只读应用名字。macOS 是 <code>/Applications</code> 与 <code>~/Applications</code> 的一级 <code>.app</code>。Windows 是卸载表 DisplayName，再加上 Program Files 的一级目录名。</td>
+        <td><code>environment-scanner-apps-*.json</code>。名字按大小写不敏感去重、排序，超过 400 个截断并记 <code>app_list_truncated</code>。</td>
+        <td>没有 <code>winreg</code> 时记 <code>windows_registry_unavailable</code>，仍继续收 Program Files 目录名。应用内容一律不读。</td>
+      </tr>
+      <tr>
+        <td>4 知识库<br><code>kb_discover.py</code></td>
+        <td>从主目录找 Obsidian / Logseq。库内统计笔记、日记习惯，并深读自述。</td>
+        <td><code>environment-scanner-kb-*.json</code>。</td>
+        <td><code>ENV_SCANNER_KB_DISCOVER=0</code> 时跳过这一阶段，不产生 kb 文件。目录预算或 20 秒到了记 <code>kb_budget_reached</code>。</td>
+      </tr>
+      <tr>
+        <td>5 合并<br><code>evidence_pack.py</code> + <code>judgment.py render</code></td>
+        <td>把上面几份 JSON 合成一份，并算出热度、周分布、AI 痕迹。</td>
+        <td>证据 JSON + 证据报告 HTML。判断参数为空，所以报告里的建议区写着「等待 AI 判断」。</td>
+        <td>data / samples / apps / evidence / 证据报告有一个是空文件就失败。知识库关闭时不要求 kb 文件存在。</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="roots">
+  <h2>扫哪些目录</h2>
+  <p>有两条查找，范围不一样。四个扫描根负责计数和采样的主体。主目录发现只为采样多找一层近期文档，并且故意不走进已经扫过的四个根。</p>
+  <div class="figure">
+    <svg viewBox="0 0 920 300" width="920" role="img" aria-labelledby="rootTitle">
+      <title id="rootTitle">四个扫描根与主目录发现的范围不同</title>
+      <rect x="16" y="16" width="540" height="268" rx="14" fill="#fffdf8" stroke="#0d6a64"/>
+      <text x="36" y="44" fill="#0d6a64" font-size="14" font-weight="700">四个扫描根 · 计数和采样都走这里</text>
+      <text x="36" y="66" fill="#6d645b" font-size="12">没有主目录那种深度上限。符号链接不跟随。平台跳过名单在这里不生效。</text>
+      <g font-size="13">
+        <rect x="36" y="84" width="240" height="78" rx="10" fill="#e4f2f0"/>
+        <text x="52" y="110" fill="#0c4f4b" font-weight="700">Documents</text>
+        <text x="52" y="130" fill="#1c1915">~/Documents</text>
+        <text x="52" y="148" fill="#6d645b" font-size="12">其中的 .md 记成 obsidian_notes</text>
+        <rect x="292" y="84" width="240" height="78" rx="10" fill="#e4f2f0"/>
+        <text x="308" y="110" fill="#0c4f4b" font-weight="700">Desktop</text>
+        <text x="308" y="130" fill="#1c1915">~/Desktop</text>
+        <text x="308" y="148" fill="#6d645b" font-size="12">desktop_files 只数到下一层</text>
+        <rect x="36" y="176" width="240" height="86" rx="10" fill="#f8ecdf"/>
+        <text x="52" y="202" fill="#9a5520" font-weight="700">Downloads</text>
+        <text x="52" y="222" fill="#1c1915">~/Downloads</text>
+        <text x="52" y="242" fill="#6d645b" font-size="12">采样时单独成「下载」池</text>
+        <rect x="292" y="176" width="240" height="86" rx="10" fill="#e8edf3"/>
+        <text x="308" y="202" fill="#243044" font-weight="700">书籍</text>
+        <text x="308" y="222" fill="#1c1915">~/Desktop/书籍</text>
+        <text x="308" y="242" fill="#6d645b" font-size="12">即使在桌面下，也归书籍池</text>
+      </g>
+      <rect x="572" y="16" width="332" height="268" rx="14" fill="#fffdf8" stroke="#9a5520"/>
+      <text x="592" y="44" fill="#9a5520" font-size="14" font-weight="700">主目录发现 · 只服务采样</text>
+      <text x="592" y="70" fill="#1c1915" font-size="13">默认开。ENV_SCANNER_DISCOVER_HOME=0 关闭。</text>
+      <text x="592" y="92" fill="#1c1915" font-size="13">ENV_SCANNER_HOME 可换根。</text>
+      <text x="592" y="122" fill="#6d645b" font-size="12">深度 home_depth = 4</text>
+      <text x="592" y="142" fill="#6d645b" font-size="12">目录预算 8000，或 15 秒</text>
+      <text x="592" y="162" fill="#6d645b" font-size="12">到预算记 sample_budget_reached</text>
+      <text x="592" y="190" fill="#1c1915" font-size="13">会跳过的：</text>
+      <text x="592" y="212" fill="#1c1915" font-size="12">· 已经落在四个根里面的目录</text>
+      <text x="592" y="232" fill="#1c1915" font-size="12">· macOS 的 Library、Applications、</text>
+      <text x="604" y="250" fill="#1c1915" font-size="12">Movies、Music、Pictures、Public…</text>
+      <text x="592" y="270" fill="#1c1915" font-size="12">· Windows 的 AppData 和 junction 名</text>
+    </svg>
+    <p class="caption">四个根都可以用环境变量换掉：ENV_SCANNER_DOCUMENTS、ENV_SCANNER_DESKTOP、ENV_SCANNER_DOWNLOADS、ENV_SCANNER_BOOKS。换根只看路径，不上传、不改文件。</p>
+  </div>
+
+  <h3>计数字段容易看错的地方</h3>
+  <table>
+    <thead><tr><th>字段</th><th>实际含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>files.obsidian_notes</code></td><td>文档根下面后缀是 <code>.md</code> 的文件个数。这是历史字段名，等于「文档根里的 Markdown」，不等于知识库笔记数。知识库自己的篇数在 <code>knowledge_bases[].notes</code>，那种统计包含 <code>.md</code> 和 <code>.markdown</code>。</td></tr>
+      <tr><td><code>files.recent_notes_7d</code></td><td>上面那些 <code>.md</code> 里，修改时间落在 7 天内的个数。</td></tr>
+      <tr><td><code>files.ebooks</code></td><td>书籍根里、跳过名单之外的全部文件，不限扩展名。</td></tr>
+      <tr><td><code>files.desktop_files</code></td><td>桌面上的文件，再加下一层子目录里的文件。更深的桌面文件不进这个数。</td></tr>
+      <tr><td><code>files.desktop_dirs</code></td><td>桌面第一层里、没有被跳过的目录个数。</td></tr>
+      <tr><td><code>storage</code> 与 <code>structure</code></td><td>用桌面的完整遍历（不限两层），加上文档、下载、书籍。体积按根汇总。结构里的 <code>top_dirs</code> 用父目录名，至少 3 个文件，最多 12 个；<code>extensions</code> 最多 10 个。</td></tr>
+      <tr><td><code>count_is_total</code></td><td>一直是 true。三种模式都不把计数截成 50 / 100 / 200。跳过名单排除的文件本来就不在计数里。计数的意思是「用来判断这个人在做什么的文件」。</td></tr>
+    </tbody>
+  </table>
+  <div class="callout amber">
+    <strong>图片和代码会进计数</strong>
+    只要不在跳过名单上，<code>.png</code>、<code>.py</code> 这类文件会计入个数、体积和扩展名分布。采样阶段另有一份文档扩展名白名单，这些文件不会被读正文。
+  </div>
+
+  <h3>Windows 的目录会先看 OneDrive</h3>
+  <p>文档和桌面各自探测。把主目录下名字匹配 <code>OneDrive*</code> 的目录按名字排序，用第一个里面有内容的 <code>Documents</code> 或 <code>Desktop</code>。空目录跳过，避免字典序靠前的空 OneDrive 盖住真正有文件的那个。两个都没有时回到 <code>~/Documents</code>、<code>~/Desktop</code>。下载始终是 <code>~/Downloads</code>，不跟着重定向。书籍是「最终采用的桌面」下面的 <code>书籍</code>。</p>
+  <p>主目录发现在 Windows 上会跳过 <code>AppData</code>，以及会被 pathlib 穿过去的 junction 名，例如 Application Data、Cookies、Recent、SendTo、Start Menu、Templates、My Documents 这一类。这份说明不把集合里的占位字符串当成真实产品名。</p>
+
+  <h3>macOS 主目录发现会跳过</h3>
+  <div class="chips">
+    <span class="chip">Library</span><span class="chip">Applications</span><span class="chip">Movies</span>
+    <span class="chip">Music</span><span class="chip">Pictures</span><span class="chip">Public</span>
+    <span class="chip">.Trash</span><span class="chip">Caches</span><span class="chip">Containers</span>
+    <span class="chip">Group Containers</span>
+    <span class="chip">node_modules</span><span class="chip">venv</span><span class="chip">.venv</span>
+    <span class="chip">dist</span><span class="chip">build</span><span class="chip">target</span><span class="chip">vendor</span>
+  </div>
+  <p>这些名字只在「主目录发现」和「从主目录出发的知识库发现」里生效。四个扫描根内部不套这张名单。文档根里如果真有一个叫 Library 的文件夹，计数和四个根上的采样仍会走进去，除非它同时命中下面的跳过规则。</p>
+</section>
+
+<section id="skip">
+  <h2>三层跳过</h2>
+  <p>原则：看不懂「这个人在做什么」的东西不进证据。软件自己的目录、运行日志、安装包和压缩包属于这一类。用户自己写的 pdf、docx、md，包括下载目录里的这些文档，仍然保留。</p>
+  <div class="figure">
+    <svg viewBox="0 0 920 250" width="920" role="img" aria-labelledby="skipTitle">
+      <title id="skipTitle">进入目录前、打开文件前、读完正文后，各有一层过滤</title>
+      <defs>
+        <marker id="arr3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1.2 L 8 5 L 0 8.8 z" fill="#6d645b"/>
+        </marker>
+      </defs>
+      <rect x="16" y="24" width="250" height="200" rx="14" fill="#f8e7e4" stroke="#8d3a38"/>
+      <text x="32" y="52" fill="#8d3a38" font-size="14" font-weight="700">第 1 层 · 目录</text>
+      <text x="32" y="76" fill="#1c1915" font-size="13">还没走进去就停</text>
+      <text x="32" y="104" fill="#1c1915" font-size="13">· 名字以 . 开头</text>
+      <text x="32" y="126" fill="#1c1915" font-size="13">· 名字以 .app 结尾</text>
+      <text x="32" y="148" fill="#1c1915" font-size="13">· 目录名整段命中名单</text>
+      <text x="32" y="170" fill="#1c1915" font-size="13">· 整词是 wallet /</text>
+      <text x="44" y="190" fill="#1c1915" font-size="13">crypto / seed</text>
+      <line x1="266" y1="124" x2="304" y2="124" stroke="#6d645b" marker-end="url(#arr3)"/>
+      <rect x="310" y="24" width="280" height="200" rx="14" fill="#f8ecdf" stroke="#9a5520"/>
+      <text x="326" y="52" fill="#9a5520" font-size="14" font-weight="700">第 2 层 · 文件名</text>
+      <text x="326" y="76" fill="#1c1915" font-size="13">不计数，也不打开</text>
+      <text x="326" y="104" fill="#1c1915" font-size="13">· 精确文件名（私钥名、.env）</text>
+      <text x="326" y="126" fill="#1c1915" font-size="13">· 后缀：安装包、压缩包、</text>
+      <text x="338" y="146" fill="#1c1915" font-size="13">日志、证书和密钥</text>
+      <text x="326" y="170" fill="#1c1915" font-size="13">· 同样的整词规则</text>
+      <text x="326" y="198" fill="#6d645b" font-size="12">.key 不在这一层，它是 Keynote</text>
+      <line x1="590" y1="124" x2="628" y2="124" stroke="#6d645b" marker-end="url(#arr3)"/>
+      <rect x="634" y="24" width="270" height="200" rx="14" fill="#e4f2f0" stroke="#0d6a64"/>
+      <text x="650" y="52" fill="#0d6a64" font-size="14" font-weight="700">第 3 层 · 正文</text>
+      <text x="650" y="76" fill="#1c1915" font-size="13">打开之后再认</text>
+      <text x="650" y="104" fill="#1c1915" font-size="13">· PEM 一类 PRIVATE KEY</text>
+      <text x="650" y="126" fill="#1c1915" font-size="13">· PuTTY-User-Key-File</text>
+      <text x="650" y="148" fill="#1c1915" font-size="13">· password / api_key / secret</text>
+      <text x="650" y="170" fill="#1c1915" font-size="13">· 中文「密码」「口令」赋值</text>
+      <text x="650" y="198" fill="#6d645b" font-size="12">命中则整份拒绝，禁止引用</text>
+    </svg>
+    <p class="caption">符号链接在每一层之前就丢掉，不跟随。配置里的 features.smart_filtering 一旦写了某一份名单（非空），就整份替换代码里的默认名单，不是合并。skip_system_files、skip_app_data、skip_cache_logs、skip_sensitive_dirs 这几个键当前脚本不读。</p>
+  </div>
+
+  <h3>目录名整段相等才跳过</h3>
+  <p>比较时忽略大小写。<code>QQ</code> 会跳过，<code>QQ笔记</code> 会看。<code>关于QQ.md</code> 是文件，不受目录名单影响。名单故意很短，Slack、项目文件夹这类说不清的名字不跳。</p>
+  <div class="chips">
+    <span class="chip">.ssh</span><span class="chip">.gnupg</span><span class="chip">.aws</span><span class="chip">.kube</span><span class="chip">Keychains</span>
+    <span class="chip">.git</span><span class="chip">node_modules</span><span class="chip">__pycache__</span><span class="chip">venv</span><span class="chip">.venv</span>
+    <span class="chip">dist</span><span class="chip">build</span><span class="chip">target</span><span class="chip">vendor</span>
+    <span class="chip">QQ</span><span class="chip">Tencent Files</span><span class="chip">WeChat</span><span class="chip">WeChat Files</span>
+    <span class="chip">xwechat_files</span><span class="chip">微信</span><span class="chip">DingTalk</span><span class="chip">WXWork</span>
+    <span class="chip">log</span><span class="chip">logs</span><span class="chip">crash</span><span class="chip">crashes</span>
+    <span class="chip">CrashReporter</span><span class="chip">Crashpad</span>
+    <span class="chip">cache</span><span class="chip">Caches</span><span class="chip">tmp</span><span class="chip">temp</span><span class="chip">__MACOSX</span>
+  </div>
+  <p>另外两条不在名单里、由代码固定执行：名字以 <code>.</code> 开头的目录；名字以 <code>.app</code> 结尾的应用包（大小写不敏感）。所以 QQ 的应用包和 QQ 的数据目录都不会被翻进去，用户自己的「QQ笔记」目录会。</p>
+
+  <h3>整词，而不是子串</h3>
+  <p><code>wallet</code>、<code>crypto</code>、<code>seed</code> 只在两种情况下跳过：去掉扩展名之后整段相等，或者被空格、下划线切开之后有一段相等。连字符不切开。</p>
+  <table>
+    <thead><tr><th>名字</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr><td><code>seed-round.docx</code></td><td>留下。连字符把整段连成一个词，不等于 seed。</td></tr>
+      <tr><td><code>Keyboard.md</code></td><td>留下。不按子串去切 key。</td></tr>
+      <tr><td><code>my_seed.txt</code>、<code>seed phrase.txt</code></td><td>跳过。下划线和空格会切开。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>打开前就丢掉的文件</h3>
+  <p>精确文件名（忽略大小写）：</p>
+  <div class="chips">
+    <span class="chip">.env</span><span class="chip">credentials.json</span>
+    <span class="chip">id_rsa</span><span class="chip">id_ed25519</span><span class="chip">id_ecdsa</span><span class="chip">id_dsa</span>
+  </div>
+  <p>后缀：</p>
+  <div class="chips">
+    <span class="chip">.pem</span><span class="chip">.p12</span><span class="chip">.kdbx</span><span class="chip">.ppk</span>
+    <span class="chip">.pfx</span><span class="chip">.cer</span><span class="chip">.crt</span><span class="chip">.p8</span><span class="chip">.keystore</span>
+    <span class="chip">.dmg</span><span class="chip">.pkg</span><span class="chip">.exe</span><span class="chip">.msi</span><span class="chip">.msix</span>
+    <span class="chip">.apk</span><span class="chip">.deb</span><span class="chip">.rpm</span><span class="chip">.appimage</span>
+    <span class="chip">.zip</span><span class="chip">.rar</span><span class="chip">.7z</span><span class="chip">.tar</span><span class="chip">.gz</span>
+    <span class="chip">.tgz</span><span class="chip">.bz2</span><span class="chip">.xz</span><span class="chip">.iso</span><span class="chip">.cab</span>
+    <span class="chip">.log</span>
+  </div>
+  <div class="callout">
+    <strong>.key 是 Keynote</strong>
+    它在文档白名单里，采样时只留文件名，<code>body_skipped</code> 写成 <code>keynote</code>。不会把它当成私钥后缀。
+  </div>
+  <p>有一个 pathlib 的边角：文件名恰好是 <code>.pem</code>（没有主名）时，后缀被看成空，第 2 层不会因后缀丢掉它，计数可能看见它。它也不在文档白名单里，采样不会打开它。</p>
+</section>
+
+<section id="sample">
+  <h2>采样与名额</h2>
+  <p>采样回答的是「最近在写什么」。它先在四个根里走一遍（规则与计数相同），再做主目录发现，然后按池子分配最多 <span class="num">120</span> 个自动名额。正文阅读顺序跟最终名单一致，所以工作文件的摘录排在日记和下载前面。</p>
+
+  <h3>一个文件先被分到哪个池</h3>
+  <div class="figure">
+    <svg viewBox="0 0 920 280" width="920" role="img" aria-labelledby="poolTitle">
+      <title id="poolTitle">分类顺序是书籍、下载、日记目录、其余工作文件</title>
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1.2 L 8 5 L 0 8.8 z" fill="#6d645b"/>
+        </marker>
+      </defs>
+      <rect x="20" y="108" width="130" height="52" rx="10" fill="#243044"/>
+      <text x="85" y="140" text-anchor="middle" fill="#fff" font-size="14">一份候选</text>
+      <line x1="150" y1="134" x2="188" y2="134" stroke="#6d645b" marker-end="url(#arr4)"/>
+      <polygon points="220,96 300,134 220,172 140,134" fill="#e8edf3" stroke="#243044"/>
+      <text x="220" y="130" text-anchor="middle" font-size="12">在书籍根下？</text>
+      <text x="220" y="148" text-anchor="middle" font-size="11" fill="#6d645b">是 → 书籍</text>
+      <line x1="300" y1="134" x2="338" y2="134" stroke="#6d645b" marker-end="url(#arr4)"/>
+      <polygon points="370,96 470,134 370,172 270,134" fill="#f8ecdf" stroke="#9a5520"/>
+      <text x="370" y="130" text-anchor="middle" font-size="12">在下载根下？</text>
+      <text x="370" y="148" text-anchor="middle" font-size="11" fill="#6d645b">是 → 下载</text>
+      <line x1="470" y1="134" x2="508" y2="134" stroke="#6d645b" marker-end="url(#arr4)"/>
+      <polygon points="560,86 690,134 560,182 430,134" fill="#e4f2f0" stroke="#0d6a64"/>
+      <text x="560" y="126" text-anchor="middle" font-size="12">md 且在配置的</text>
+      <text x="560" y="144" text-anchor="middle" font-size="12">日记目录里？</text>
+      <line x1="690" y1="134" x2="728" y2="134" stroke="#6d645b" marker-end="url(#arr4)"/>
+      <rect x="732" y="108" width="160" height="52" rx="10" fill="#fffdf8" stroke="#1c1915"/>
+      <text x="812" y="140" text-anchor="middle" font-size="14">否则 · 工作</text>
+      <text x="85" y="40" font-size="13" fill="#243044">优先顺序写死：书籍 &gt; 下载 &gt; 日记 &gt; 工作</text>
+      <text x="20" y="230" font-size="13" fill="#1c1915">日记目录来自知识库配置，见下一节。日期开头的文件名本身不会把文件送进日记池。</text>
+      <text x="20" y="254" font-size="13" fill="#6d645b">pdf 落在日记目录里时，后缀不是 md，所以留在工作池（若它同时在书籍或下载根下，仍按前两条归类）。</text>
+    </svg>
+  </div>
+
+  <h3>120 个名额怎么分</h3>
+  <div class="figure">
+    <svg viewBox="0 0 920 300" width="920" role="img" aria-labelledby="quotaTitle">
+      <title id="quotaTitle">先放显式路径，再按池子取，最后只回填工作文件</title>
+      <rect x="16" y="16" width="888" height="52" rx="10" fill="#243044"/>
+      <text x="460" y="48" text-anchor="middle" fill="#fff" font-size="14">显式路径最先占位，不受 90 天限制，也不占用这 120 的预留计算</text>
+      <rect x="16" y="86" width="210" height="120" rx="12" fill="#fffdf8" stroke="#1c1915"/>
+      <text x="121" y="114" text-anchor="middle" font-size="14" font-weight="700">工作</text>
+      <text x="121" y="138" text-anchor="middle" font-size="13">先拿剩余房间</text>
+      <text x="121" y="160" text-anchor="middle" font-size="13">每目录最多 8</text>
+      <text x="121" y="182" text-anchor="middle" font-size="12" fill="#6d645b">按目录轮转</text>
+      <rect x="242" y="86" width="210" height="120" rx="12" fill="#e4f2f0" stroke="#0d6a64"/>
+      <text x="347" y="114" text-anchor="middle" font-size="14" font-weight="700" fill="#0c4f4b">日记</text>
+      <text x="347" y="138" text-anchor="middle" font-size="13">上限 8</text>
+      <text x="347" y="160" text-anchor="middle" font-size="13">每目录最多 3</text>
+      <text x="347" y="182" text-anchor="middle" font-size="12" fill="#0c4f4b">池子空则不预留</text>
+      <rect x="468" y="86" width="210" height="120" rx="12" fill="#f8ecdf" stroke="#9a5520"/>
+      <text x="573" y="114" text-anchor="middle" font-size="14" font-weight="700" fill="#9a5520">下载</text>
+      <text x="573" y="142" text-anchor="middle" font-size="13">上限 12</text>
+      <text x="573" y="166" text-anchor="middle" font-size="12" fill="#9a5520">先可读正文，再较新</text>
+      <rect x="694" y="86" width="210" height="120" rx="12" fill="#e8edf3" stroke="#243044"/>
+      <text x="799" y="114" text-anchor="middle" font-size="14" font-weight="700" fill="#243044">书籍</text>
+      <text x="799" y="142" text-anchor="middle" font-size="13">上限 4</text>
+      <text x="799" y="166" text-anchor="middle" font-size="12" fill="#243044">只按修改时间</text>
+      <rect x="16" y="224" width="888" height="58" rx="10" fill="#f8ecdf" stroke="#9a5520"/>
+      <text x="460" y="248" text-anchor="middle" font-size="14">名额没用完时，只回填工作池</text>
+      <text x="460" y="268" text-anchor="middle" font-size="12" fill="#6d645b">第二次轮转不再限制每目录 8。日记、下载、书籍到顶就停，空出来的名额不会回给它们。</text>
+    </svg>
+    <p class="caption">三个池都有文件时，先给日记、下载、书籍预留 8+12+4=24，工作第一轮最多 96，并且每目录 8。某个池是空的，就不预留它的上限，工作能拿更多。预留没用完的部分，最后也只回到工作池。</p>
+  </div>
+  <p>轮转时，目录按「该目录里最新文件」从新到旧排序。同一目录里，能读正文的排在只留文件名的前面，再比修改时间。显式路径若和自动候选重复，只留显式那一份。</p>
+  <div class="callout">
+    <strong>正文预算跟着这份名单走</strong>
+    顺序是：显式路径 → 第一轮工作文件 → 日记 → 下载 → 书籍 → 工作回填。deep 最多读 80 份正文。排在前面的工作文件会先花掉每份 4000 字、合计 12 万字的预算。后面的文件可能只留下文件名，<code>body_skipped</code> 为 <code>not_read</code>。
+  </div>
+
+  <h3>什么样的文件进候选</h3>
+  <p>扩展名必须在这份白名单里，并且（显式路径除外）修改时间落在模式窗口内：</p>
+  <div class="chips">
+    <span class="chip">.md</span><span class="chip">.markdown</span><span class="chip">.txt</span><span class="chip">.csv</span>
+    <span class="chip">.docx</span><span class="chip">.pptx</span>
+    <span class="chip">.pdf</span><span class="chip">.xlsx</span><span class="chip">.doc</span><span class="chip">.rtf</span>
+    <span class="chip">.pages</span><span class="chip">.key</span><span class="chip">.numbers</span>
+  </div>
+  <table>
+    <thead><tr><th>扩展名</th><th>正文</th></tr></thead>
+    <tbody>
+      <tr><td>.md .markdown .txt</td><td>读前 200 行。标题取第一个 Markdown 标题（最多 120 字）。摘录丢掉空行、标题行、整行表格、整行粗体、分隔线。</td></tr>
+      <tr><td>.csv</td><td>只留第一行。</td></tr>
+      <tr><td>.docx</td><td>读压缩包里的 <code>word/document.xml</code>，去掉标签。</td></tr>
+      <tr><td>.pptx</td><td>读前 3 页幻灯片的 XML。</td></tr>
+      <tr><td>.pdf .xlsx .doc .rtf .pages .key .numbers</td><td>只留文件名。<code>body_skipped</code> 分别是 pdf、xlsx、doc、rtf、pages、keynote、numbers。会话 AI 若要理解 pdf 或 xlsx，得自己去读原文件。</td></tr>
+      <tr><td>大于 2 MB</td><td>只留文件名，原因 <code>too_large</code>。不占用「读了正文」的次数，但占候选名额。</td></tr>
+    </tbody>
+  </table>
+  <p>文本按 UTF-8 打开，无法解码的字节丢掉。GBK 的记事本文件可能缺字，当前版本不做编码探测。被判定为私钥或口令的文件会从近期名单消失，进入 <code>rejected_documents</code>，并且这一次阅读次数已经花掉，不会改读下一份来补。</p>
+</section>
+
+<section id="journal">
+  <h2>日记怎么认定</h2>
+  <p>日记只来自这个人自己的知识库配置。文件名像不像日期，不参与判断。没有知识库，或者插件开了但没写目录，就不统计日记习惯。那些日期开头的笔记留在工作池里，按工作文件的每目录上限和回填处理。</p>
+  <div class="figure">
+    <svg viewBox="0 0 920 520" width="920" role="img" aria-labelledby="journalTitle">
+      <title id="journalTitle">Obsidian 与 Logseq 各自按库内配置找日记目录</title>
+      <defs>
+        <marker id="arr5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1.2 L 8 5 L 0 8.8 z" fill="#6d645b"/>
+        </marker>
+      </defs>
+      <rect x="330" y="12" width="260" height="40" rx="10" fill="#243044"/>
+      <text x="460" y="38" text-anchor="middle" fill="#fff" font-size="14">发现一个库</text>
+      <line x1="400" y1="52" x2="200" y2="78" stroke="#6d645b" marker-end="url(#arr5)"/>
+      <line x1="520" y1="52" x2="720" y2="78" stroke="#6d645b" marker-end="url(#arr5)"/>
+
+      <rect x="16" y="84" width="430" height="300" rx="14" fill="#fffdf8" stroke="#0d6a64"/>
+      <text x="32" y="112" fill="#0d6a64" font-size="15" font-weight="700">Obsidian · 标记是目录 .obsidian</text>
+      <rect x="36" y="128" width="390" height="70" rx="8" fill="#e4f2f0"/>
+      <text x="52" y="152" font-size="13">daily-notes.json 的 folder</text>
+      <text x="52" y="174" font-size="12" fill="#6d645b">有目录就记为每日。format 只保存，不用来过滤文件名。</text>
+      <text x="52" y="222" font-size="13">再加上 periodic-notes 的 data.json</text>
+      <text x="52" y="246" font-size="13">daily / weekly / monthly / quarterly</text>
+      <text x="52" y="270" font-size="12" fill="#6d645b">必须 enabled，而且 folder 非空。</text>
+      <text x="52" y="300" font-size="12" fill="#6d645b">关掉的种类、空目录、写了 .. 或绝对路径的，都不要。</text>
+      <text x="52" y="322" font-size="12" fill="#6d645b">不会把整个库当成日记，也不猜 YYYY-MM-DD。</text>
+      <text x="52" y="360" font-size="13">目录里所有 .md / .markdown 都算，递归，不看文件名。</text>
+
+      <rect x="474" y="84" width="430" height="300" rx="14" fill="#fffdf8" stroke="#9a5520"/>
+      <text x="490" y="112" fill="#9a5520" font-size="15" font-weight="700">Logseq · 标记是文件 logseq/config.edn</text>
+      <text x="490" y="140" font-size="13">先去掉分号注释，再找 :journals-directory</text>
+      <rect x="494" y="156" width="390" height="54" rx="8" fill="#f8ecdf"/>
+      <text x="510" y="178" font-size="13">有引号就取引号里的目录</text>
+      <text x="510" y="198" font-size="12" fill="#6d645b">否则只接受裸的目录名字符</text>
+      <text x="490" y="236" font-size="13">(str "journals") 解析不出目录名</text>
+      <text x="490" y="256" font-size="12" fill="#8d3a38">记 journal_config_unparsed: ，日记列表为空</text>
+      <text x="490" y="286" font-size="13">键不存在，并且库里真有 journals/</text>
+      <text x="490" y="306" font-size="12" fill="#0d6a64">才用默认目录名 journals，种类记每日</text>
+      <text x="490" y="334" font-size="12" fill="#6d645b">键写了但解析失败时，即使有 journals/ 也不用默认值。</text>
+      <text x="490" y="356" font-size="12" fill="#6d645b">只有 .logseq/ 子目录、没有 config.edn 的，不是图。</text>
+
+      <rect x="16" y="404" width="888" height="96" rx="12" fill="#e8edf3"/>
+      <text x="36" y="432" font-size="14" font-weight="700">进证据之前还要过数量</text>
+      <text x="36" y="456" font-size="13">每个目录至少 10 篇 Markdown 才算「习惯」。按篇数取前 3 个。篇数一样时保持配置出现的顺序，四种都启用且篇数相同，排在最后的 quarterly 不会出现。</text>
+      <text x="36" y="480" font-size="13">持续天数 = 最早和最晚修改时间的间隔，至少 1 天。周频 = 篇数 ÷ (持续天数 / 7)，保留两位小数。报告写成「目录」每日/每周/每月/每季 N 篇/持续 D 天。</text>
+    </svg>
+    <p class="caption">采样用的日记目录和统计用的是同一套规则。四个根上搜索深度是知识库的 max_depth 5；主目录发现开着时，主目录再搜 home_depth 4。命中库之后不再往库里面嵌套找另一个库。点开头的目录在检查标记之前就跳过，所以 ~/.logseq 这种应用自己的全局配置不会被当成图。</p>
+  </div>
+  <div class="callout amber">
+    <strong>格式字符串存下来，不筛文件</strong>
+    Obsidian 的 format、Logseq 的 <code>:journal/page-title-format</code> 会写进证据的 <code>format</code> 字段。目录里叫 <code>记事-1.md</code>、<code>周一记事.md</code> 的笔记，只要在配置目录下，都算这个习惯的一篇。
+  </div>
+</section>
+
+<section id="kb">
+  <h2>知识库与自述深读</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>怎么找到库</h3>
+      <ul>
+        <li>从主目录出发，深度配置是 5。目录预算 6000，或 20 秒。</li>
+        <li>最多保留 3 个库。点开头的目录、平台跳过目录、构建目录先跳过，再看标记。</li>
+        <li>Obsidian：存在目录 <code>.obsidian</code>。</li>
+        <li>Logseq：存在文件 <code>logseq/config.edn</code>。</li>
+        <li>找到之后不进这个库再找嵌套库。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>库内统计</h3>
+      <ul>
+        <li><code>notes</code>：库内 .md / .markdown 篇数。</li>
+        <li><code>recent_notes_7d</code>：其中 7 天内改过的篇数。</li>
+        <li><code>top_dirs</code>：父目录的名字（不是从库根数出来的路径），至少 3 篇，最多 8 个。笔记直接放在库根时，父目录名等于库名，不进入这张表。</li>
+        <li><code>journals</code>：上一节的前 3 个习惯。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>自述文档</h3>
+  <p>用来回答「这个人是谁」。只看文件名主干，后缀限于 <code>.md</code> <code>.markdown</code> <code>.txt</code>。主干必须等于关键词，或者以关键词结尾。</p>
+  <div class="chips">
+    <span class="chip">个人总结</span><span class="chip">个人画像</span><span class="chip">自我介绍</span>
+    <span class="chip">关于我</span><span class="chip">个人情况</span><span class="chip">简历</span>
+  </div>
+  <p>主干里只要出现下面任一片段，整份不要：</p>
+  <div class="chips">
+    <span class="chip">关于我们</span><span class="chip">如何</span><span class="chip">怎么</span><span class="chip">怎样</span>
+    <span class="chip">教程</span><span class="chip">模板</span><span class="chip">范文</span><span class="chip">示例</span>
+  </div>
+  <p>所以 <code>关于我.md</code>、<code>2024-个人总结.md</code> 可以深读；<code>关于我们.md</code>、<code>如何写简历.md</code>、<code>简历模板.md</code> 不会。</p>
+  <div class="callout">
+    <strong>全部库合在一起最多打开 3 份</strong>
+    先把各库命中的文件按修改时间从新到旧排好，只打开前 <span class="num">3</span> 份，每份最多 <span class="num">500</span> 行。某一份因私钥或口令被拒绝后，不会把第 4 份补上来。证据里仍保留被拒绝的路径和原因（<code>rejected_deep_reads</code>）。深读记录上的 <code>vault</code> 字段是文件父目录的名字。
+  </div>
+  <p>Org 笔记不在日记统计里，也不是自述深读的后缀。</p>
+</section>
+
+<section id="secrets">
+  <h2>私钥与口令</h2>
+  <p>文件名那一层已经挡住常见密钥文件。这里是打开正文之后的第二道：笔记里贴出来的密钥和口令，整份不能进入可引用证据。比较前会先去掉 NUL，避免 UTF-16 被误读成中间插了空字节的 ASCII。</p>
+  <table>
+    <thead><tr><th>认出什么</th><th>原因标记</th></tr></thead>
+    <tbody>
+      <tr><td><code>BEGIN … PRIVATE KEY</code>，中间可以有 EC、ENCRYPTED、PGP 这类词，也允许多个空格</td><td><code>private_key</code></td></tr>
+      <tr><td>出现 <code>PuTTY-User-Key-File</code></td><td><code>private_key</code></td></tr>
+      <tr><td><code>password</code>、<code>passwd</code>、<code>api_key</code>、<code>secret</code> 后面跟着冒号或等号。允许引号，允许 <code>DB_PASSWORD</code> 这种前缀</td><td><code>credential_assignment</code></td></tr>
+      <tr><td>中文「密码」或「口令」后面跟着 <code>:</code> <code>=</code> 或 <code>：</code></td><td><code>credential_assignment</code></td></tr>
+    </tbody>
+  </table>
+  <p>采样拒绝的文件只出现在 <code>rejected_documents</code>，判断校验不允许引用它们。深读拒绝的文件只出现在 <code>rejected_deep_reads</code>。两种拒绝都不把正文放进报告。</p>
+</section>
+
+<section id="evidence">
+  <h2>证据里有什么，图表数字从哪来</h2>
+  <p><code>evidence_pack.py</code> 把四份产物合成一份，版本号写 <code>4.3.0</code>。判断 AI 读的就是这一份。图表不在判断文件里。</p>
+  <table>
+    <thead><tr><th>字段</th><th>来源</th></tr></thead>
+    <tbody>
+      <tr><td><code>scan</code></td><td>时间、模式、平台、系统、磁盘占用。磁盘用 <code>shutil.disk_usage</code>。</td></tr>
+      <tr><td><code>counts</code> / <code>storage</code> / <code>structure</code></td><td>阶段 1。见「扫哪些目录」。</td></tr>
+      <tr><td><code>recent_files</code></td><td>采样留下的文件：文件名、父目录、时间、扩展名、标题、摘录、<code>body_skipped</code>。</td></tr>
+      <tr><td><code>rejected_documents</code></td><td>采样时因私钥或口令丢掉的路径。</td></tr>
+      <tr><td><code>apps</code> / <code>app_count</code> / <code>app_sources</code></td><td>应用名单。AI 应用是名字里含关键词的子集，关键词见下。</td></tr>
+      <tr><td><code>activity_heat</code></td><td>按近期文件的父目录名聚合，最多 10 个，带 <code>last_active_days</code>。</td></tr>
+      <tr><td><code>weekly_counts</code></td><td>近期文件按修改时间放进 26 个周桶。没有文件的周不出现。</td></tr>
+      <tr><td><code>sample_extensions</code></td><td>近期文件扩展名，最多 8 个。这和全量 <code>structure.extensions</code> 不是同一份。</td></tr>
+      <tr><td><code>ai_usage_signals</code></td><td>在标题和摘录里数标记；再从应用名里挑 AI 应用。<code>marker_files</code> 是至少命中一次的文件数，<code>file_ratio</code> 是它除以近期文件数。</td></tr>
+      <tr><td><code>knowledge_bases</code> / <code>deep_reads</code> / <code>rejected_deep_reads</code></td><td>阶段 4。关掉发现时为空。</td></tr>
+      <tr><td><code>scan_warnings</code></td><td>四份产物的警告去重后接在一起。</td></tr>
+      <tr><td><code>zero_signal</code></td><td>近期文件为空，并且应用名单也为空。为真时不允许写任何建议。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>AI 痕迹标记</h3>
+  <p>正文标记（用来扫标题和摘录）：<code>\bAI\b</code>、人工智能、GPT / Claude / Kimi / Gemini / DeepSeek / Copilot / Opus / FunASR、智能体或 agent、提示词或 prompt、skill、自动化、以及「引擎」后面跟冒号。应用名关键词：chatgpt、claude、cursor、codex、zcode、trae、grok、deepseek、doubao、kimi、gemini、copilot。这些词当前版本不调整。</p>
+
+  <h3>四张图的数字</h3>
+  <p>渲染器从证据算出 <code>chart_payload</code>，写进报告页面。判断 JSON 里没有图表字段，模型填了也不会被拿去画图。用户打开报告时，Chart.js 从 CDN 加载库文件，不上传扫描数据。离线打开时图表区降级成提示。这份说明页自身不加载任何外部脚本。</p>
+  <table>
+    <thead><tr><th>图</th><th>数据</th></tr></thead>
+    <tbody>
+      <tr><td>文件类型分布</td><td><code>structure.extensions</code> 的前 6 个。这是全量计数，不是近期样本。</td></tr>
+      <tr><td>活跃领域雷达</td><td><code>activity_heat</code> 前 6 个目录的文件数，除以其中的最大值，再乘 100。</td></tr>
+      <tr><td>26 周趋势</td><td><code>weekly_counts</code> 倒序，标签是 <code>-N周</code>。</td></tr>
+      <tr><td>时间分配</td><td>热度前 5 个目录的文件数，除以这 5 个的合计，再乘 100。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>报告里的正文会再藏一次</h3>
+  <p>证据 JSON 保留深读全文和近期摘录，给判断 AI 用。写进 HTML 的那份副本会改两处：深读的 <code>text</code> 换成「只给判断 AI、报告不展示」；若某条近期文件的路径和深读是同一个文件，摘录换成「与深读为同一文件，正文不在报告中展示」，标题清空。证据区展示深读时只留文件名、时间和行数。</p>
+  <p>知识库卡片上的日记行是：目录名、每日/每周/每月/每季、篇数、持续天数。每个库的卡片都会带上全部深读文件名。</p>
+</section>
+
+<section id="judgment">
+  <h2>判断合同与拒绝门</h2>
+  <p>会话 AI 按 <code>SKILL.md</code> 写判断。脚本不评价句子好不好，只做能确定的检查。有一条不通过，最终报告不会生成。</p>
+
+  <h3>判断大致分四步</h3>
+  <ol>
+    <li><strong>画像。</strong> 看 <code>ai_usage_signals</code>。痕迹密就写 <code>power</code>，几乎没有就写 <code>novice</code>。新手档教从零开始；重度档讲怎么把零散用法收成可重复的流程。</li>
+    <li><strong>诊断。</strong> 从近期文件、知识库、深读里归纳在做的事，最多 8 件。每件有活动名、<code>ai_usage</code>（none / occasional / deep）和一句时间占用。<code>summary</code> 回答最大的剩余机会在哪。</li>
+    <li><strong>四张理解卡。</strong> 主要活动、关注领域、工作或学习方式、文件结构。每张 2 到 6 条，重要的可以挂引用。</li>
+    <li><strong>建议三件套。</strong> 这件事里 AI 做哪一段、第一步怎么开口（引用了文件就必须写出文件名）、预期省掉什么。再加上 kind、是否快见效、工作量、理由、来源。</li>
+  </ol>
+  <div class="callout amber">
+    <strong>基础用法和升级用法</strong>
+    <code>basic</code> 只给还没用或偶尔用 AI 的事。<code>upgrade</code> 把已经在深度用的事收成可重复流程。证据里完全没有 AI 痕迹时，不允许出现升级型建议。画像是 power 并且写了建议时，至少要有一条升级型建议。
+  </div>
+
+  <h3>引用有两条通道</h3>
+  <ul>
+    <li>文件：<code>{"name": "活动方案.md"}</code>。名字必须出现在 <code>recent_files</code> 或 <code>deep_reads</code> 的 <code>name</code> 里。只要 sources 里有文件名，<code>first_step</code> 的文字里就必须包含这些名字。</li>
+    <li>指标：<code>{"type":"metric","ref":"counts.ebooks"}</code>。按点号在证据里逐级查找，找不到就拒绝。这样「电子书很多、还没动过」这类聚合判断可以被核对。</li>
+    <li><code>app_refs</code> 里的每个名字必须在应用清单里。</li>
+  </ul>
+
+  <h3>校验会拒绝的情况</h3>
+  <table>
+    <thead><tr><th>对象</th><th>门</th></tr></thead>
+    <tbody>
+      <tr><td>建议条数</td><td>0 到 10。0 条时 <code>insufficient_evidence</code> 必须是 true；有建议时必须是 false。</td></tr>
+      <tr><td>零信号</td><td><code>zero_signal</code> 为真时，建议必须是空列表。</td></tr>
+      <tr><td>画像与诊断</td><td>persona 只能是 novice 或 power。诊断要有非空 summary。活动最多 8 条，且 activity、ai_usage、time_note 都要有。有建议时活动不能为空。</td></tr>
+      <tr><td>每条建议</td><td>要有不重复的 id。activity、ai_role、first_step、expected_saving、reason 非空。effort 是 low/medium/high。kind 是 basic 或 upgrade。quick_win 是布尔值。sources 至少一条有效引用。</td></tr>
+      <tr><td>理解与节奏</td><td>有建议时，四张卡各 2–6 条；日/周/月各有 summary，以及 1–4 条事项。</td></tr>
+      <tr><td>优先级</td><td>有建议就不能空着，最多 3 条。id 必须指向某条建议。why 非空。how_to_start 和 long_term 各 1–4 条。只要存在 quick_win，第一条优先级就必须是其中一条。</td></tr>
+      <tr><td>资产与结构</td><td>资产最多 6 条，要有 title、what、why_valuable、1–4 条 how_to_use。结构建议最多 4 条，要有 title 和 detail。挂了 basis 的同样走引用检查。</td></tr>
+    </tbody>
+  </table>
+  <p>最终报告的区块是：画像、整体理解、四张图、建议、日/周/月节奏、三段式优先级（为什么、怎么开始、长期帮助）、资产、结构建议，以及折叠的证据。对话里再用白话说出前三条。</p>
+</section>
+
+<section id="modes">
+  <h2>三种深度</h2>
+  <p>模式只改变采样窗口和正文预算。计数、跳过名单、知识库发现的深度都不跟着变。</p>
+  <table>
+    <thead>
+      <tr><th></th><th>quick</th><th>standard</th><th>deep（默认）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>看最近多少天</td><td>30</td><td>30</td><td>90</td></tr>
+      <tr><td>读正文的文件数</td><td>0，只留文件名</td><td>40</td><td>80</td></tr>
+      <tr><td>每份最多字符</td><td>0</td><td>2000</td><td>4000</td></tr>
+      <tr><td>全部摘录合计</td><td>0</td><td>6 万</td><td>12 万</td></tr>
+      <tr><td>自动候选名额</td><td colspan="3">都是 120。工作每目录 8，日记 8 且每目录 3，下载 12，书籍 4</td></tr>
+      <tr><td>前多少行</td><td colspan="3">可读文本都是前 200 行；自述深读另算，最多 500 行</td></tr>
+    </tbody>
+  </table>
+  <p>quick 下，本来能读的文件会标 <code>not_read</code>。pdf、Keynote、过大文件仍标它们自己的原因，不改成 not_read。</p>
+</section>
+
+<section id="limits">
+  <h2>有意不做的事</h2>
+  <ul>
+    <li>不解开压缩包。zip 在后缀名单上，直接不看。</li>
+    <li>不把普通 <code>.txt</code> 当成日志。只有后缀 <code>.log</code>，以及目录名是 log / logs 的，才跳过。</li>
+    <li>不扫描 macOS 的资料库作为四个根的一部分。Library 只在主目录发现和知识库发现里跳过。</li>
+    <li>不探测 GBK。txt / csv 按 UTF-8 忽略坏字节。</li>
+    <li>不解析 pdf 和 xlsx 的正文。文件名会留下，需要时由会话 AI 自己读。</li>
+    <li>不用文件名开头是不是日期来认日记。</li>
+    <li>Linux 没有采集入口。适配器只是兜底：应用名单为空，并记 <code>app_inventory_unsupported_platform:linux</code>。不要临时拼一套等价命令。</li>
+    <li>Windows 的 <code>run-scan.ps1</code>、<code>find-python.ps1</code>、<code>generate-final-report.ps1</code>、注册表和 <code>os.startfile</code> 还没有在真实 Windows 机器上执行。32 位 Windows 不支持。</li>
+    <li>判断校验不检查句子是否具体、是否像套话。那部分靠会话 AI 遵守准则，脚本只核对引用和结构。</li>
+    <li>不改名额（120 / 8 / 3 / 12 / 4），不改周频公式，不改 AI 关键词表。</li>
+  </ul>
+  <div class="callout rose">
+    <strong>安全边界</strong>
+    可以在输出目录写本工具自己的 JSON 和 HTML。不修改、不删除、不移动扫描根里的用户文件。不要求完全磁盘访问权限。除了用户后来自己打开报告时浏览器去取 Chart.js，扫描过程不访问网络。
+  </div>
+</section>
+
+<section id="files">
+  <h2>代码入口</h2>
+  <table>
+    <thead><tr><th>文件</th><th>职责</th></tr></thead>
+    <tbody>
+      <tr><td><code>SKILL.md</code></td><td>行为语义：何时触发、两步流程、判断准则、校验规则、安全边界。</td></tr>
+      <tr><td><code>config.json</code></td><td>真正生效的配置：深度、跳过名单、采样名额、应用上限、知识库预算、报告上限。</td></tr>
+      <tr><td><code>scripts/run-scan.sh</code></td><td>macOS / bash 的五阶段入口。</td></tr>
+      <tr><td><code>scripts/run-scan.ps1</code></td><td>Windows 证据入口。UTF-8 BOM，CRLF。未实机验证。</td></tr>
+      <tr><td><code>scripts/find-python.sh</code> / <code>find-python.ps1</code></td><td>按「解释器从哪来」选出绝对路径。</td></tr>
+      <tr><td><code>runtime/vendor/</code></td><td>四个平台的 CPython 3.12.14 压缩包、SHA256 清单和许可证。</td></tr>
+      <tr><td><code>scripts/generate-final-report.sh</code></td><td>校验，渲染，然后打开最终报告。</td></tr>
+      <tr><td><code>scripts/generate-final-report.ps1</code></td><td>Windows 最终报告入口。未实机验证。</td></tr>
+      <tr><td><code>scripts/lib/scan_collect.py</code></td><td>遍历、跳过、计数、结构。</td></tr>
+      <tr><td><code>scripts/lib/sample_content.py</code></td><td>候选、分池、名额、摘录。</td></tr>
+      <tr><td><code>scripts/lib/kb_discover.py</code></td><td>库标记、日记配置、自述深读。</td></tr>
+      <tr><td><code>scripts/lib/app_inventory.py</code></td><td>应用名字的去重和上限。</td></tr>
+      <tr><td><code>scripts/lib/platforms.py</code></td><td>按 <code>ENV_SCANNER_PLATFORM</code> 或本机系统选适配器。文件名不能叫 platform.py。</td></tr>
+      <tr><td><code>platform_mac.py</code> / <code>platform_win.py</code></td><td>应用清单、主目录跳过、默认四个根、打开报告。</td></tr>
+      <tr><td><code>scripts/lib/evidence_pack.py</code></td><td>合并证据，计算热度、周分布、AI 痕迹。</td></tr>
+      <tr><td><code>scripts/lib/judgment.py</code></td><td>校验判断，注入图表，渲染 HTML，藏起深读正文。</td></tr>
+      <tr><td><code>scripts/lib/common.py</code></td><td>私钥与口令识别、噪声行、JSON 读写。</td></tr>
+      <tr><td><code>templates/final-report.html</code></td><td>证据报告和最终报告共用的模板。</td></tr>
+    </tbody>
+  </table>
+  <h3>常用环境变量</h3>
+  <table>
+    <thead><tr><th>变量</th><th>作用</th></tr></thead>
+    <tbody>
+      <tr><td><code>ENV_SCANNER_OUTPUT_DIR</code></td><td>报告目录。默认 <code>~/.environment-scanner/reports</code>。</td></tr>
+      <tr><td><code>ENV_SCANNER_OPEN_REPORT=0</code></td><td>最终报告写完后不打开。</td></tr>
+      <tr><td><code>ENV_SCANNER_KB_DISCOVER=0</code></td><td>关闭知识库发现和自述深读。</td></tr>
+      <tr><td><code>ENV_SCANNER_DISCOVER_HOME=0</code></td><td>关闭主目录发现。四个根照常扫描。</td></tr>
+      <tr><td><code>ENV_SCANNER_HOME</code></td><td>主目录发现和知识库发现的起点。</td></tr>
+      <tr><td><code>ENV_SCANNER_DOCUMENTS</code> 等四项</td><td>替换四个扫描根。</td></tr>
+      <tr><td><code>ENV_SCANNER_INSIGHT_DOCS</code></td><td>额外要读的文档，多项用分号。</td></tr>
+      <tr><td><code>ENV_SCANNER_APPLICATIONS</code></td><td>改应用清单的扫描根。macOS 用冒号，Windows 用分号。</td></tr>
+      <tr><td><code>ENV_SCANNER_PLATFORM</code></td><td>强制用某一套适配器，便于在 macOS 上试 Windows 的目录逻辑。</td></tr>
+      <tr><td><code>ENV_SCANNER_PYTHON</code></td><td>指定解释器绝对路径。设了但不能运行就停。</td></tr>
+      <tr><td><code>ENV_SCANNER_SAMPLE_DIR_BUDGET</code><br><code>ENV_SCANNER_SAMPLE_TIME_BUDGET_SEC</code></td><td>覆盖采样的主目录预算。</td></tr>
+      <tr><td><code>ENV_SCANNER_KB_DIR_BUDGET</code><br><code>ENV_SCANNER_KB_TIME_BUDGET_SEC</code></td><td>覆盖知识库发现预算。</td></tr>
+    </tbody>
+  </table>
+  <p class="note">这份页面只说明 v4.3.0 的当前行为，放在 <code>docs/scan-logic.html</code>。它不是扫描报告，也不改变扫描、判断或测试。</p>
+</section>
+
+<footer class="note">Environment Scanner · 扫描逻辑说明 · 对照仓库内脚本与 config.json · 2026-10-26</footer>
+</main>
+</div>
+</body>
+</html>
